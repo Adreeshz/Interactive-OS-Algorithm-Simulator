@@ -1,0 +1,27 @@
+╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║                  🔴 SYSTEM RESCUE PROTOCOL 🔴                ║
+║                                                                ║
+║              INTERACTIVE OS ALGORITHM SIMULATOR                ║
+║                    MAINFRAME STATUS: CRITICAL                 ║
+║                                                                ║
+║   ███╗   ███╗███████╗███╗   ██╗██╗   ██╗                       ║
+║   ████╗ ████║██╔════╝████╗  ██║██║   ██║                       ║
+║   ██╔████╔██║█████╗  ██╔██╗ ██║██║   ██║                       ║
+║   ██║╚██╔╝██║██╔══╝  ██║╚██╗██║██║   ██║                       ║
+║   ██║ ╚═╝ ██║███████╗██║ ╚████║╚██████╔╝                       ║
+║   ╚═╝     ╚═╝╚══════╝╚═╝  ╚═══╝ ╚═════╝                        ║
+║                                                                ║
+║   CRITICAL SYSTEM FAILURE DETECTED                             ║
+║   - Kernel Threads: DEADLOCKED                                 ║
+║   - Event Logs: CORRUPTED                                      ║
+║   - CPU Queue: OVERFLOWING                                     ║
+║   - Memory: FRAGMENTED                                         ║
+║                                                                ║
+║   Time Until Catastrophic Meltdown: 5 MINUTES                 ║
+║                                                                ║
+║   :: Initializing Recovery Sequence...                         ║
+║   :: Loading Kernel... [████████████████░░░░] 75%              ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝
+

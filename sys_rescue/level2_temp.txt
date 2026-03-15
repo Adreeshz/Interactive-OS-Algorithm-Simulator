@@ -1,0 +1,296 @@
+void level_2_cpu_bottleneck(void) {
+    clear_screen();
+    print_game_header();
+    
+    printf("╔════════════════════════════════════════════════════╗\n");
+    printf("║  LEVEL 2: SYNCHRONIZATION CRISIS                  ║\n");
+    printf("║  (Reader-Writer, Producer-Consumer, Dining Philo) ║\n");
+    printf("╚════════════════════════════════════════════════════╝\n\n");
+    
+    printf("🔴 CRITICAL: Multiple synchronization problems detected!\n");
+    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+    
+    printf("The audit system has THREE classic OS problems:\n");
+    printf("  1. READER-WRITER DEADLOCK - Your read is blocking writers\n");
+    printf("  2. PRODUCER-CONSUMER STARVATION - Buffers overflowing\n");
+    printf("  3. DINING PHILOSOPHERS DEADLOCK - Resources starved\n\n");
+    
+    printf("⏱️  TIME LIMIT: 600 seconds (10 minutes) for 3 complex problems\n");
+    printf("📝 Write complete C code snippets using synchronization primitives.\n\n");
+    
+    start_level_timer(600);
+    
+    char user_input[1024];
+    int correct_answers = 0;
+    int question = 1;
+    
+    // PROBLEM 1: Reader-Writer Synchronization
+    while (question == 1 && !is_level_time_up()) {
+        display_level_timer();
+        printf("\n🔴 PROBLEM 1: Reader-Writer Deadlock\n");
+        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        printf("SITUATION: You are reading audit logs while a writer\n");
+        printf("tries to update them. The writer is BLOCKED because you\n");
+        printf("hold the resource lock, but the writer also needs access.\n");
+        printf("This creates a DEADLOCK!\n\n");
+        printf("PROBLEM CODE (pseudocode):\n");
+        printf("  Reader:  lock(resource) → read() → unlock(resource)\n");
+        printf("  Writer:  lock(resource) → write() → unlock(resource)\n");
+        printf("  Issue: Both use SAME mutex - readers block writers!\n\n");
+        printf("SOLUTION: Implement a READER-WRITER lock where:\n");
+        printf("  • Multiple readers can read simultaneously\n");
+        printf("  • Only ONE writer can write (exclusive access)\n");
+        printf("  • Writers have PRIORITY over new readers\n\n");
+        printf("Write the synchronization code for this. Include:\n");
+        printf("  1. Mutex for coordination\n");
+        printf("  2. Reader counter\n");
+        printf("  3. Writer semaphore/condition\n");
+        printf("  4. Reader lock/unlock functions\n");
+        printf("  5. Writer lock/unlock functions\n");
+        printf("(Max 20 lines, use pthreads)\n");
+        printf(">>> ");
+        fflush(stdout);
+        
+        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
+            if (is_level_time_up()) break;
+            
+            user_input[strcspn(user_input, "\n")] = 0;
+            
+            int has_mutex = strstr(user_input, "pthread_mutex_t") != NULL;
+            int has_reader_counter = (strstr(user_input, "read_count") != NULL || 
+                                      strstr(user_input, "reader_count") != NULL);
+            int has_semaphore = (strstr(user_input, "sem_t") != NULL || 
+                                 strstr(user_input, "pthread_cond") != NULL ||
+                                 strstr(user_input, "cond_t") != NULL);
+            int has_lock = strstr(user_input, "lock") != NULL;
+            int has_unlock = strstr(user_input, "unlock") != NULL;
+            int has_reader_lock = (strstr(user_input, "reader") != NULL && 
+                                   strstr(user_input, "lock") != NULL);
+            int has_writer_lock = (strstr(user_input, "writer") != NULL && 
+                                   strstr(user_input, "lock") != NULL);
+            
+            if (has_mutex && has_reader_counter && has_semaphore && has_reader_lock && has_writer_lock) {
+                printf("✅ CORRECT! Reader-Writer lock implemented:\n");
+                printf("   ✓ Mutex for protecting reader counter\n");
+                printf("   ✓ Reader counter to track active readers\n");
+                printf("   ✓ Semaphore/Condition for writer synchronization\n");
+                printf("   ✓ Reader lock/unlock functions\n");
+                printf("   ✓ Writer lock/unlock functions\n");
+                printf("   ✓ Multiple readers can read concurrently!\n");
+                printf("   ✓ Writers get exclusive access!\n\n");
+                correct_answers++;
+                question = 2;
+            } else {
+                printf("❌ Incomplete Reader-Writer implementation. Missing:\n");
+                if (!has_mutex) printf("   ✗ Mutex for coordination\n");
+                if (!has_reader_counter) printf("   ✗ Reader counter variable\n");
+                if (!has_semaphore) printf("   ✗ Semaphore/Condition for writers\n");
+                if (!has_reader_lock) printf("   ✗ Reader-specific lock function\n");
+                if (!has_writer_lock) printf("   ✗ Writer-specific lock function\n");
+                printf("   Try again!\n\n");
+            }
+        }
+    }
+    
+    // PROBLEM 2: Producer-Consumer with Starvation
+    while (question == 2 && !is_level_time_up()) {
+        display_level_timer();
+        printf("\n🔴 PROBLEM 2: Producer-Consumer Starvation\n");
+        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        printf("SITUATION: Multiple producers are filling a buffer while\n");
+        printf("consumers try to empty it. PROBLEM: Producers flood the\n");
+        printf("buffer so fast that consumers are STARVED - they never\n");
+        printf("get access to consume! Buffer overflows!\n\n");
+        printf("BROKEN CODE (pseudocode):\n");
+        printf("  Producer: produce() → buffer_put(item) [no limit check]\n");
+        printf("  Consumer: buffer_get() → consume(item) [blocked by overflow]\n");
+        printf("  Issue: No semaphore limits on buffer capacity!\n\n");
+        printf("SOLUTION: Implement Producer-Consumer with:\n");
+        printf("  • Bounded buffer (fixed size, e.g., 10 items)\n");
+        printf("  • Semaphore 'empty' (initially = buffer size)\n");
+        printf("  • Semaphore 'full' (initially = 0)\n");
+        printf("  • Mutex to protect critical section\n");
+        printf("  • Producers wait if buffer is FULL\n");
+        printf("  • Consumers wait if buffer is EMPTY\n\n");
+        printf("Write PRODUCER and CONSUMER functions. Include:\n");
+        printf("  1. Two semaphores (empty, full)\n");
+        printf("  2. Mutex for mutual exclusion\n");
+        printf("  3. Bounded buffer array\n");
+        printf("  4. Producer: wait(empty), lock, put, unlock, post(full)\n");
+        printf("  5. Consumer: wait(full), lock, get, unlock, post(empty)\n");
+        printf("(Max 25 lines, use pthreads + semaphores)\n");
+        printf(">>> ");
+        fflush(stdout);
+        
+        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
+            if (is_level_time_up()) break;
+            
+            user_input[strcspn(user_input, "\n")] = 0;
+            
+            int has_sem_t = strstr(user_input, "sem_t") != NULL;
+            int has_empty_sem = (strstr(user_input, "empty") != NULL || 
+                                 strstr(user_input, "EMPTY") != NULL);
+            int has_full_sem = (strstr(user_input, "full") != NULL || 
+                                strstr(user_input, "FULL") != NULL);
+            int has_mutex = strstr(user_input, "pthread_mutex_t") != NULL || 
+                            strstr(user_input, "mutex") != NULL;
+            int has_bounded_buffer = strstr(user_input, "[") != NULL && 
+                                     strstr(user_input, "buffer") != NULL;
+            int has_wait = (strstr(user_input, "sem_wait") != NULL || 
+                            strstr(user_input, "wait") != NULL);
+            int has_post = (strstr(user_input, "sem_post") != NULL || 
+                            strstr(user_input, "post") != NULL);
+            int has_producer = strstr(user_input, "producer") != NULL;
+            int has_consumer = strstr(user_input, "consumer") != NULL;
+            
+            if (has_sem_t && has_empty_sem && has_full_sem && has_mutex && 
+                has_bounded_buffer && has_wait && has_post && has_producer && has_consumer) {
+                printf("✅ CORRECT! Producer-Consumer implemented:\n");
+                printf("   ✓ Two semaphores (empty, full)\n");
+                printf("   ✓ Mutex for mutual exclusion\n");
+                printf("   ✓ Bounded buffer with fixed capacity\n");
+                printf("   ✓ Producer waits on 'empty', posts 'full'\n");
+                printf("   ✓ Consumer waits on 'full', posts 'empty'\n");
+                printf("   ✓ NO MORE STARVATION! NO OVERFLOW!\n");
+                printf("   ✓ Perfect producer-consumer pattern!\n\n");
+                correct_answers++;
+                question = 3;
+            } else {
+                printf("❌ Incomplete Producer-Consumer. Missing:\n");
+                if (!has_sem_t) printf("   ✗ Semaphore declarations\n");
+                if (!has_empty_sem) printf("   ✗ 'empty' semaphore\n");
+                if (!has_full_sem) printf("   ✗ 'full' semaphore\n");
+                if (!has_mutex) printf("   ✗ Mutex for critical section\n");
+                if (!has_bounded_buffer) printf("   ✗ Bounded buffer array\n");
+                if (!has_wait) printf("   ✗ wait() calls (sem_wait)\n");
+                if (!has_post) printf("   ✗ post() calls (sem_post)\n");
+                if (!has_producer) printf("   ✗ Producer function\n");
+                if (!has_consumer) printf("   ✗ Consumer function\n");
+                printf("   Try again!\n\n");
+            }
+        }
+    }
+    
+    // PROBLEM 3: Dining Philosophers
+    while (question == 3 && !is_level_time_up()) {
+        display_level_timer();
+        printf("\n🔴 PROBLEM 3: Dining Philosophers Deadlock\n");
+        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        printf("SITUATION: 5 philosophers sit around a table. Between each\n");
+        printf("pair is ONE chopstick. Each philosopher needs BOTH chopsticks\n");
+        printf("to eat. Currently, each philosopher:\n");
+        printf("  1. Picks up LEFT chopstick\n");
+        printf("  2. Picks up RIGHT chopstick\n");
+        printf("  3. Eats\n");
+        printf("  4. Releases both\n\n");
+        printf("PROBLEM: If all philosophers pick up their left chopstick\n");
+        printf("SIMULTANEOUSLY, ALL are waiting for the right chopstick!\n");
+        printf("= CIRCULAR WAIT = DEADLOCK!\n\n");
+        printf("SOLUTIONS (pick one):\n");
+        printf("  A) Asymmetric: One philosopher picks RIGHT first\n");
+        printf("  B) Mutex: Only N-1 philosophers can eat at once\n");
+        printf("  C) Semaphore: State machine (THINKING, HUNGRY, EATING)\n\n");
+        printf("Write a DEADLOCK-FREE Dining Philosophers solution:\n");
+        printf("  • 5 philosophers, 5 chopsticks\n");
+        printf("  • Implement one of the three solutions above\n");
+        printf("  • Include necessary synchronization primitives\n");
+        printf("  • Each philosopher has: think() → eat() → repeat\n");
+        printf("  • Chopstick pickup/release functions\n");
+        printf("  • NO DEADLOCK! NO STARVATION!\n");
+        printf("(Max 30 lines, clearly implement one solution)\n");
+        printf(">>> ");
+        fflush(stdout);
+        
+        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
+            if (is_level_time_up()) break;
+            
+            user_input[strcspn(user_input, "\n")] = 0;
+            
+            int has_philosophers = (strstr(user_input, "philosopher") != NULL || 
+                                    strstr(user_input, "PHILOSOPHER") != NULL);
+            int has_chopsticks = (strstr(user_input, "chopstick") != NULL || 
+                                  strstr(user_input, "CHOPSTICK") != NULL ||
+                                  strstr(user_input, "fork") != NULL);
+            int has_sync = (strstr(user_input, "sem_t") != NULL || 
+                            strstr(user_input, "pthread_mutex_t") != NULL);
+            int has_pickup = (strstr(user_input, "pickup") != NULL || 
+                              strstr(user_input, "pick_up") != NULL);
+            int has_putdown = (strstr(user_input, "putdown") != NULL || 
+                               strstr(user_input, "put_down") != NULL);
+            int has_eat = strstr(user_input, "eat") != NULL;
+            int has_think = strstr(user_input, "think") != NULL;
+            
+            int has_asymmetric = (strstr(user_input, "[4]") != NULL || 
+                                  strstr(user_input, "== 4") != NULL) &&
+                                 (strstr(user_input, "right") != NULL && 
+                                  strstr(user_input, "left") != NULL);
+            int has_mutex_limit = strstr(user_input, "pthread_mutex_t") != NULL && 
+                                  strstr(user_input, "4") != NULL;
+            int has_state_machine = (strstr(user_input, "THINKING") != NULL || 
+                                     strstr(user_input, "HUNGRY") != NULL || 
+                                     strstr(user_input, "EATING") != NULL);
+            
+            if (has_philosophers && has_chopsticks && has_sync && has_pickup && 
+                has_putdown && has_eat && has_think && 
+                (has_asymmetric || has_mutex_limit || has_state_machine)) {
+                printf("✅ CORRECT! Dining Philosophers implemented:\n");
+                printf("   ✓ 5 philosophers with proper structure\n");
+                printf("   ✓ 5 chopsticks/forks for synchronization\n");
+                printf("   ✓ Synchronization primitives in place\n");
+                printf("   ✓ Chopstick pickup/putdown logic\n");
+                printf("   ✓ eat() and think() cycles\n");
+                if (has_asymmetric) {
+                    printf("   ✓ Using ASYMMETRIC solution (Phil 4 picks right first)\n");
+                } else if (has_mutex_limit) {
+                    printf("   ✓ Using MUTEX LIMITING (only 4 can eat at once)\n");
+                } else {
+                    printf("   ✓ Using STATE MACHINE solution\n");
+                }
+                printf("   ✓ DEADLOCK-FREE! STARVATION-FREE!\n\n");
+                correct_answers++;
+                question = 4;
+            } else {
+                printf("❌ Incomplete Dining Philosophers. Missing:\n");
+                if (!has_philosophers) printf("   ✗ Philosopher representation\n");
+                if (!has_chopsticks) printf("   ✗ Chopstick/fork resources\n");
+                if (!has_sync) printf("   ✗ Synchronization primitives\n");
+                if (!has_pickup) printf("   ✗ Chopstick pickup logic\n");
+                if (!has_putdown) printf("   ✗ Chopstick putdown logic\n");
+                if (!has_eat) printf("   ✗ eat() function\n");
+                if (!has_think) printf("   ✗ think() function\n");
+                if (!(has_asymmetric || has_mutex_limit || has_state_machine)) {
+                    printf("   ✗ No deadlock-free solution detected\n");
+                }
+                printf("   Try again!\n\n");
+            }
+        }
+    }
+    
+    stop_level_timer();
+    
+    if (is_level_time_up()) {
+        printf("\n╔════════════════════════════════════════════════════╗\n");
+        printf("║                   💥 TIME'S UP! 💥                ║\n");
+        printf("║  The system has CRASHED due to deadlocks!        ║\n");
+        printf("║  Restarting game from the beginning...           ║\n");
+        printf("╚════════════════════════════════════════════════════╝\n");
+        sleep(2);
+        engine.current_level = 0;
+        engine.score = 0;
+        engine.levels_completed = 0;
+        return;
+    }
+    
+    printf("\n╔════════════════════════════════════════════════════╗\n");
+    printf("║  ✅ LEVEL 2 COMPLETE!                             ║\n");
+    printf("║  Synchronization Problems Solved: %d/3           ║\n", correct_answers);
+    printf("║  Reader-Writer, Producer-Consumer, & Philosophers ║\n");
+    printf("║  Points Earned: %d                                ║\n", correct_answers * 100);
+    printf("║                                                  ║\n");
+    printf("║  ✅ NO MORE DEADLOCKS! PERFECT SYNC! ✅         ║\n");
+    printf("╚════════════════════════════════════════════════════╝\n");
+    
+    engine.score += correct_answers * 100;
+    engine.levels_completed++;
+    press_any_key();
+}
