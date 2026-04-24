@@ -32,15 +32,11 @@ typedef struct {
 } ReadyQueue;
 
 /* ============================================
-   SCHEDULER ALGORITHMS
+   SCHEDULER ALGORITHM
    ============================================ */
 
-typedef enum {
-    FCFS,           // First Come First Serve
-    SJF,            // Shortest Job First (Non-preemptive)
-    PRIORITY,       // Priority Based
-    ROUND_ROBIN     // Round Robin with Time Quantum
-} SchedulingAlgorithm;
+// Using: Round-Robin with Priority Preemption
+// Fair time allocation per task with priority-based preemption
 
 /* ============================================
    SCHEDULER STATISTICS
@@ -62,11 +58,8 @@ void queue_add_task(ReadyQueue* rq, Task task);
 void queue_remove_task(ReadyQueue* rq, int index);
 void queue_display(ReadyQueue* rq);
 
-// Scheduling Algorithms
-void schedule_fcfs(ReadyQueue* rq, SchedulerStats* stats);
-void schedule_sjf(ReadyQueue* rq, SchedulerStats* stats);
-void schedule_priority(ReadyQueue* rq, SchedulerStats* stats);
-void schedule_round_robin(ReadyQueue* rq, int time_quantum, SchedulerStats* stats);
+// Scheduling Algorithm (Round-Robin with Priority)
+void schedule_round_robin_priority(ReadyQueue* rq, int time_quantum, SchedulerStats* stats);
 
 // Utility Functions
 void calculate_times(ReadyQueue* rq);

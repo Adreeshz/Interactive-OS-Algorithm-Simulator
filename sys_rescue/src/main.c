@@ -1,65 +1,89 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <unistd.h>
-#include <ctype.h>
 #include <time.h>
 #include <pthread.h>
+#include <semaphore.h>
+#include <ctype.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <termios.h>
 #include "sync_engine.h"
 #include "scheduler.h"
 #include "game_infrastructure.h"
+#include "user_management.h"
+#include "question_pool.h"
+#include "login_system.h"
+#include "algorithms.h"
 
 #define GAME_TITLE "SYS_RESCUE: Interactive OS Algorithm Simulator"
-#define GAME_VERSION "1.0.0"
+#define GAME_VERSION "2.0.0"
+#define LEVEL_TIME_LIMIT 1800  // 30 minutes per level
 
 /* ============================================
-   GAME STATE
+   GLOBAL GAME STATE
+   ============================================ */
+
+/* ============================================
+   GAME STATE STRUCTURE
    ============================================ */
 
 typedef struct {
+    GameSession* session;
+    QuestionPool* question_pool;
     int current_level;
     int score;
-    int time_remaining;
     int levels_completed;
-    GameState* game_state;
-    LogBuffer* log;
-    pthread_t timer_thread;
+    int time_remaining;
     int time_up;
     pthread_mutex_t timer_lock;
-    // Level-specific timer
-    int level_time_remaining;
-    int level_time_up;
-    pthread_t level_timer_thread;
-    int show_level_timer;
+    pthread_t timer_thread;
     
-    // Synchronization-based infrastructure
-    GameInfrastructure* infrastructure;
+    // Algorithms for demonstration
+    BankersAlgorithm* banker;
+    Scheduler* scheduler;
+    MemoryManager* memory;
+    PageReplacementSystem* paging;
+    DiskScheduler* disk_sched;
+    
+    // Background simulation
+    int sim_active;
+    pthread_t sim_thread;
+    int cpu_operations_count;
+    int page_faults_count;
+    int disk_operations_count;
+    int memory_allocations_count;
+    
+    // Producer-Consumer: Event Logging
+    EventQueue* event_queue;
 } GameEngine;
 
 GameEngine engine;
 
 /* ============================================
-   TIMER THREAD
+   NOTE: Event logging using EventQueue from game_infrastructure.h
+   EventQueue is initialized and managed by game_infrastructure module
    ============================================ */
 
-void* timer_thread_func(void* arg) {
-    (void)arg;  // Unused parameter
+/* ============================================
+   TIMER FUNCTIONS
+   ============================================ */
+
+void* global_timer_func(void* arg) {
+    (void)arg;
     
     while (engine.time_remaining > 0 && !engine.time_up) {
-        sleep(1);  // Decrement every second
-        
+        sleep(1);
         pthread_mutex_lock(&engine.timer_lock);
         if (engine.time_remaining > 0) {
             engine.time_remaining--;
         }
-        
         if (engine.time_remaining == 0) {
             engine.time_up = 1;
         }
         pthread_mutex_unlock(&engine.timer_lock);
     }
-    
     return NULL;
 }
 
@@ -78,76 +102,78 @@ int is_time_up(void) {
 }
 
 /* ============================================
-   LEVEL TIMER THREAD (1 minute per level)
+   BACKGROUND OS SIMULATION THREAD
    ============================================ */
 
-void* level_timer_thread_func(void* arg) {
+void* background_simulation_thread(void* arg) {
     (void)arg;
     
-    while (engine.level_time_remaining > 0 && !engine.level_time_up && engine.show_level_timer) {
-        sleep(1);
+    int cycle = 0;
+    while (engine.sim_active) {
+        cycle++;
         
-        pthread_mutex_lock(&engine.timer_lock);
-        if (engine.level_time_remaining > 0) {
-            engine.level_time_remaining--;
+        // Simulate CPU scheduling
+        if (engine.scheduler && cycle % 2 == 0) {
+            engine.cpu_operations_count++;
+            int page_num = rand() % 256;
+            
+            // Simulate page access
+            if (engine.paging) {
+                page_system_access(engine.paging, page_num);
+                engine.page_faults_count += engine.paging->page_faults;
+            }
         }
         
-        if (engine.level_time_remaining == 0) {
-            engine.level_time_up = 1;
+        // Simulate memory allocation
+        if (engine.memory && cycle % 3 == 0) {
+            int size = 64 + (rand() % 256);
+            int pid = 100 + (rand() % 10);
+            memory_allocate(engine.memory, pid, size);
+            engine.memory_allocations_count++;
         }
-        pthread_mutex_unlock(&engine.timer_lock);
+        
+        // Simulate disk I/O
+        if (engine.disk_sched && cycle % 4 == 0) {
+            int track = rand() % 200;
+            disk_scheduler_add_request(engine.disk_sched, track);
+            engine.disk_operations_count++;
+        }
+        
+        // Simulate banker's algorithm resource requests
+        if (engine.banker && cycle % 5 == 0) {
+            int pid = 1 + (rand() % 3);
+            int resource = rand() % 3;
+            int amount = 1 + (rand() % 3);
+            banker_request_resource(engine.banker, pid, resource, amount);
+        }
+        
+        // Run silently - only display metrics when user chooses System Monitor
+        usleep(500000);  // 500ms cycle
     }
     
     return NULL;
 }
 
-void display_level_timer(void) {
-    pthread_mutex_lock(&engine.timer_lock);
-    int time_left = engine.level_time_remaining;
-    pthread_mutex_unlock(&engine.timer_lock);
+void start_background_simulation(void) {
+    engine.sim_active = 1;
+    engine.cpu_operations_count = 0;
+    engine.page_faults_count = 0;
+    engine.disk_operations_count = 0;
+    engine.memory_allocations_count = 0;
     
-    int seconds = time_left % 60;
-    
-    if (time_left > 20) {
-        printf("                                                 ⏱️  %02d:%02d\n", time_left / 60, seconds);
-    } else if (time_left > 0) {
-        printf("                                                 ⚠️  %02d:%02d\n", time_left / 60, seconds);
-    } else {
-        printf("                                                 💥 TIME UP!\n");
+    if (pthread_create(&engine.sim_thread, NULL, background_simulation_thread, NULL) != 0) {
+        printf("❌ Failed to start background simulation\n");
+        engine.sim_active = 0;
     }
-    fflush(stdout);
 }
 
-void start_level_timer(int seconds) {
-    pthread_mutex_lock(&engine.timer_lock);
-    engine.level_time_remaining = seconds;
-    engine.level_time_up = 0;
-    engine.show_level_timer = 1;
-    pthread_mutex_unlock(&engine.timer_lock);
-    
-    pthread_create(&engine.level_timer_thread, NULL, level_timer_thread_func, NULL);
-}
-
-void stop_level_timer(void) {
-    pthread_mutex_lock(&engine.timer_lock);
-    engine.show_level_timer = 0;
-    pthread_mutex_unlock(&engine.timer_lock);
-    
-    pthread_join(engine.level_timer_thread, NULL);
-}
-
-int is_level_time_up(void) {
-    pthread_mutex_lock(&engine.timer_lock);
-    int up = engine.level_time_up;
-    pthread_mutex_unlock(&engine.timer_lock);
-    return up;
-}
-
-int get_level_time_remaining(void) {
-    pthread_mutex_lock(&engine.timer_lock);
-    int time = engine.level_time_remaining;
-    pthread_mutex_unlock(&engine.timer_lock);
-    return time;
+void stop_background_simulation(void) {
+    if (engine.sim_active) {
+        engine.sim_active = 0;
+        if (engine.sim_thread != 0) {
+            pthread_join(engine.sim_thread, NULL);
+        }
+    }
 }
 
 /* ============================================
@@ -159,9 +185,33 @@ void clear_screen(void) {
     fflush(stdout);
 }
 
-void print_separator(char c, int width) {
-    for (int i = 0; i < width; i++) printf("%c", c);
-    printf("\n");
+void display_header(const char* title) {
+    clear_screen();
+    printf("\n╔════════════════════════════════════════════════════╗\n");
+    printf("║  %-50s║\n", GAME_TITLE);
+    printf("║  %-50s║\n", GAME_VERSION);
+    printf("╚════════════════════════════════════════════════════╝\n\n");
+    
+    if (title) {
+        printf("╔════════════════════════════════════════════════════╗\n");
+        printf("║  %-50s║\n", title);
+        printf("╚════════════════════════════════════════════════════╝\n\n");
+    }
+}
+
+void display_timer(void) {
+    int remaining = get_time_remaining();
+    int minutes = remaining / 60;
+    int seconds = remaining % 60;
+    
+    if (remaining > 300) {
+        printf("⏱️  %02d:%02d remaining\n", minutes, seconds);
+    } else if (remaining > 60) {
+        printf("⚠️  %02d:%02d remaining\n", minutes, seconds);
+    } else if (remaining > 0) {
+        printf("🔴 %02d:%02d remaining - HURRY!\n", minutes, seconds);
+    }
+    fflush(stdout);
 }
 
 void press_any_key(void) {
@@ -169,792 +219,640 @@ void press_any_key(void) {
     getchar();
 }
 
-int get_user_choice(int min, int max) {
-    int choice;
-    char input[100];
-    
-    while (1) {
-        // Check if time is up
-        if (engine.show_level_timer && is_level_time_up()) {
-            return -1;  // Return -1 to signal time's up
-        }
-        
-        // Display timer
-        if (engine.show_level_timer) {
-            display_level_timer();
-        }
-        
-        printf("\nEnter your choice [%d-%d]: ", min, max);
-        fflush(stdout);
-        
-        if (fgets(input, sizeof(input), stdin) != NULL) {
-            choice = atoi(input);
-            if (choice >= min && choice <= max) {
-                return choice;
-            }
-        }
-        printf("❌ Invalid choice. Please try again.\n");
-    }
-}
+/* ============================================
+   LOGIN SCREENS
+   ============================================ */
 
-void print_game_header(void) {
-    printf("\n╔════════════════════════════════════════════════════╗\n");
-    printf("║  %-50s║\n", GAME_TITLE);
-    printf("║  %-50s║\n", GAME_VERSION);
+void display_login_menu(void) {
+    display_header("🔐 LOGIN SYSTEM");
+    
+    printf("╔════════════════════════════════════════════════════╗\n");
+    printf("║  1. Login                                         ║\n");
+    printf("║  2. Register New Account                          ║\n");
+    printf("║  3. Exit                                          ║\n");
     printf("╚════════════════════════════════════════════════════╝\n\n");
 }
 
-void print_game_status(void) {
-    printf("\n📊 MAINFRAME STATUS\n");
-    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    printf("🎮 Current Level:     %d\n", engine.current_level);
-    printf("🏆 Score:            %d\n", engine.score);
-    printf("✅ Levels Completed: %d/4\n", engine.levels_completed);
-    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+int login_flow(void) {
+    while (1) {
+        display_login_menu();
+        printf("Select option [1-3]: ");
+        
+        char choice[10];
+        if (fgets(choice, sizeof(choice), stdin) == NULL) continue;
+        
+        int option = atoi(choice);
+        
+        switch (option) {
+            case 1: {
+                display_header("🔐 USER LOGIN");
+                printf("Username: ");
+                char username[MAX_USERNAME_LEN];
+                if (fgets(username, sizeof(username), stdin) == NULL) break;
+                username[strcspn(username, "\n")] = 0;
+                
+                printf("Password: ");
+                char password[MAX_PASSWORD_LEN];
+                if (fgets(password, sizeof(password), stdin) == NULL) break;
+                password[strcspn(password, "\n")] = 0;
+                
+                int result = login_system_login(engine.session, username, password);
+                if (result == 0) {
+                    printf("✅ Login successful! Welcome, %s!\n", username);
+                    sleep(2);
+                    return 1;  // Success
+                } else {
+                    printf("❌ Login failed (error code: %d)\n", result);
+                    printf("   0: User banned\n   -2: User not found\n   -4: Wrong password\n");
+                    sleep(2);
+                }
+                break;
+            }
+            
+            case 2: {
+                display_header("📝 USER REGISTRATION");
+                printf("Username: ");
+                char username[MAX_USERNAME_LEN];
+                if (fgets(username, sizeof(username), stdin) == NULL) break;
+                username[strcspn(username, "\n")] = 0;
+                
+                printf("Password: ");
+                char password[MAX_PASSWORD_LEN];
+                if (fgets(password, sizeof(password), stdin) == NULL) break;
+                password[strcspn(password, "\n")] = 0;
+                
+                int result = login_system_register(engine.session, username, password);
+                if (result == 0) {
+                    printf("✅ Registration successful! Please login.\n");
+                    sleep(2);
+                } else {
+                    printf("❌ Registration failed (error code: %d)\n", result);
+                    sleep(2);
+                }
+                break;
+            }
+            
+            case 3:
+                printf("Goodbye!\n");
+                return 0;  // Exit
+                
+            default:
+                printf("❌ Invalid option.\n");
+        }
+    }
+    return 0;
 }
 
 /* ============================================
-   LEVEL IMPLEMENTATIONS
+   LEVEL CONFIGURATION
    ============================================ */
 
-void level_0_terminal_boot(void) {
-    clear_screen();
-    print_game_header();
+typedef struct {
+    int level_id;
+    const char* level_name;
+    int time_limit;           // in seconds
+    int questions_required;   // 5 questions per level
+} LevelConfig;
+
+// Level configurations: time increases with difficulty
+LevelConfig level_configs[] = {
+    {0, "Linux Commands & Shell Scripting", 15*60, 5},      // 15 mins
+    {1, "System Calls", 20*60, 5},                          // 20 mins
+    {2, "Synchronization", 25*60, 5},                       // 25 mins
+    {3, "CPU Scheduling", 30*60, 5},                        // 30 mins
+    {4, "Banker's Algorithm & Deadlock", 35*60, 5},         // 35 mins
+    {5, "Memory Management & Disk Scheduling", 40*60, 5},   // 40 mins
+    {6, "Page Replacement & Virtual Memory", 45*60, 5}      // 45 mins
+};
+
+#define NUM_LEVELS 7
+
+/* ============================================
+   LEVEL QUESTION SYSTEM
+   ============================================ */
+
+void run_level_with_questions(int level_id) {
+    if (level_id < 0 || level_id >= NUM_LEVELS) return;
     
-    printf("╔════════════════════════════════════════════════════╗\n");
-    printf("║  LEVEL 0: FILE SYSTEM RECOVERY                    ║\n");
-    printf("║  (File Permissions & Ownership)                   ║\n");
+    LevelConfig config = level_configs[level_id];
+    
+    char header[100];
+    snprintf(header, sizeof(header), "LEVEL %d: %s", level_id, config.level_name);
+    display_header(header);
+    
+    printf("📚 TIME LIMIT: %d minutes\n", config.time_limit / 60);
+    printf("📝 QUESTIONS: %d\n", config.questions_required);
+    printf("🎯 OBJECTIVE: Answer all %d questions correctly before time runs out!\n\n", config.questions_required);
+    printf("Press ENTER to start...");
+    getchar();
+    
+    // Initialize level timer
+    engine.time_remaining = config.time_limit;
+    engine.time_up = 0;
+    
+    // Start timer thread
+    pthread_create(&engine.timer_thread, NULL, global_timer_func, NULL);
+    
+    DifficultyLevel current_difficulty = BEGINNER;
+    int questions_answered = 0;
+    int correct_answers = 0;
+    int level_score = 0;
+    
+    // Track asked questions to prevent repetition
+    int asked_question_ids[100];
+    int asked_count = 0;
+    memset(asked_question_ids, 0, sizeof(asked_question_ids));
+    
+    clear_screen();
+    printf("\n╔════════════════════════════════════════════════════╗\n");
+    printf("║  LEVEL %d: %s\n", level_id, config.level_name);
+    printf("║  Answer %d questions to complete this level\n", config.questions_required);
     printf("╚════════════════════════════════════════════════════╝\n\n");
     
-    printf("🔴 CRITICAL: You accidentally deleted audit logs!\n");
-    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
-    
-    printf("Fortunately, you have a backup draft copy.\n");
-    printf("But the system owner controls the actual log file.\n\n");
-    
-    start_level_timer(60);  // 60 seconds for this level
-    
-    char user_input[256];
-    int task = 1;
-    int correct_answers = 0;
-    
-    // TASK 1: Protect the draft file from deletion
-    while (task == 1 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n📋 TASK 1: Protect the Draft\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("Your draft file (draft_audit.log) contains important data.\n");
-        printf("You need to REMOVE write permissions so it cannot be deleted.\n\n");
-        printf("What command protects the file from deletion?\n");
-        printf("(Hint: chmod command to remove write permissions)\n");
-        printf(">>> ");
-        fflush(stdout);
+    // Ask questions until either completed or time runs out
+    while (questions_answered < config.questions_required && !is_time_up()) {
+        printf("📋 Question %d/%d\n", questions_answered + 1, config.questions_required);
+        printf("Difficulty: %s | Time: %d:%02d remaining\n\n",
+               current_difficulty == BEGINNER ? "🔹 BEGINNER" :
+               current_difficulty == INTERMEDIATE ? "🟡 INTERMEDIATE" :
+               current_difficulty == ADVANCED ? "🔶 ADVANCED" : "🔴 PROFICIENT",
+               get_time_remaining() / 60, get_time_remaining() % 60);
         
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
+        // Get question (with repetition prevention)
+        Question* q = NULL;
+        int attempts = 0;
+        while (q == NULL && attempts < 20) {
+            q = question_get_random(engine.question_pool, level_id, current_difficulty);
+            if (q == NULL) {
+                printf("❌ No questions available at this difficulty!\n");
+                break;
+            }
             
-            user_input[strcspn(user_input, "\n")] = 0;
+            // Check if this question was already asked
+            int already_asked = 0;
+            for (int i = 0; i < asked_count; i++) {
+                if (asked_question_ids[i] == q->id) {
+                    already_asked = 1;
+                    break;
+                }
+            }
             
-            // Accept variations: chmod a-w, chmod 444, chmod -w
-            if (strstr(user_input, "chmod") && (strstr(user_input, "a-w") || 
-                strstr(user_input, "444") || strstr(user_input, "-w") || 
-                strstr(user_input, "u-w"))) {
-                printf("✅ CORRECT! You've protected the draft file.\n");
-                printf("   The draft is now read-only and safe from deletion.\n\n");
-                correct_answers++;
-                task = 2;
-            } else {
-                printf("❌ Incorrect. Use chmod to remove write permissions.\n");
-                printf("   Example: chmod 444 draft_audit.log\n\n");
+            if (already_asked) {
+                q = NULL;  // Force getting another question
+                attempts++;
             }
         }
-    }
-    
-    // TASK 2: Try to read the audit log (will fail with permission denied)
-    while (task == 2 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n📋 TASK 2: Read the Audit Logs\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("Now you need to understand what caused the crash.\n");
-        printf("You must read the audit log file (audit.log).\n\n");
-        printf("What command reads file contents?\n");
-        printf(">>> ");
+        
+        if (!q) {
+            printf("❌ No new questions available at this difficulty!\n");
+            break;
+        }
+        
+        // Add this question ID to the asked list
+        if (asked_count < 100) {
+            asked_question_ids[asked_count++] = q->id;
+        }
+        
+        printf("%s\n", q->question);
+        if (strlen(q->hint) > 0) {
+            printf("💡 Hint: %s\n", q->hint);
+        }
+        printf("\nYour answer: ");
         fflush(stdout);
         
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
-            
-            user_input[strcspn(user_input, "\n")] = 0;
-            
-            if (strstr(user_input, "cat audit.log")) {
-                printf("⚠️  You executed: cat audit.log\n");
-                printf("   ERROR: Permission denied!\n");
-                printf("   The file is owned by root and you don't have read permission.\n\n");
-                task = 3;
-            } else {
-                printf("❌ Try: cat audit.log\n\n");
-            }
+        char answer[MAX_ANSWER_LEN];
+        if (fgets(answer, sizeof(answer), stdin) == NULL) {
+            printf("❌ Error reading input.\n");
+            continue;
         }
-    }
-    
-    // TASK 3: Change ownership of the file
-    while (task == 3 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n📋 TASK 3: Claim File Ownership\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("The system owner hasn't given you read permission.\n");
-        printf("You need to change file ownership to yourself.\n");
-        printf("Your username is: 'username'\n\n");
-        printf("What command changes file ownership?\n");
-        printf("(Hint: chown command to change owner)\n");
-        printf(">>> ");
-        fflush(stdout);
         
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
-            
-            user_input[strcspn(user_input, "\n")] = 0;
-            
-            // Accept variations
-            if (strstr(user_input, "chown") && (strstr(user_input, "username") || 
-                strstr(user_input, "$USER") || strstr(user_input, "audit.log"))) {
-                printf("✅ CORRECT! You've changed file ownership.\n");
-                printf("   audit.log is now owned by: username\n");
-                printf("   You now have read permissions!\n\n");
-                correct_answers++;
-                task = 4;
-            } else {
-                printf("❌ Incorrect. Use: sudo chown username audit.log\n");
-                printf("   Remember, your username is 'username'\n\n");
-            }
+        // Check if time ran out during answer
+        if (is_time_up()) {
+            printf("\n⏰ TIME'S UP! Level failed - you ran out of time!\n");
+            break;
         }
-    }
-    
-    // TASK 4: Read and analyze the logs - Thread apocalypse discovery
-    while (task == 4 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n📋 TASK 4: Analyze the Crash Logs\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("Now that you have access, read the audit logs.\n");
-        printf("You discover a THREAD APOCALYPSE:\n\n");
-        printf("  [14:32:01] Thread 1 created with pthread_create()\n");
-        printf("  [14:32:05] Thread 1 NEVER called pthread_join()\n");
-        printf("  [14:32:10] Thread 1 completes execution\n");
-        printf("  [14:32:11] ⚠️  ZOMBIE THREAD: Parent never terminated!\n");
-        printf("  [14:32:15] Thread 2 created (Thread 1 orphaned it)\n");
-        printf("  [14:32:20] Parent process SUDDENLY TERMINATED!\n");
-        printf("  [14:32:21] ⚠️  ORPHAN THREADS: No parent to manage!\n");
-        printf("  [14:32:30] Resource leaks accumulate...\n");
-        printf("  [14:32:31] ❌ SYSTEM CRASH FROM THREAD CHAOS!\n\n");
-        printf("What is the PRIMARY problem here?\n");
-        printf("  a) Too many threads were created\n");
-        printf("  b) Threads not properly joined/terminated (zombies) & orphaned\n");
-        printf("  c) Threads used incorrect synchronization\n");
-        printf("  Enter choice (a/b/c): ");
-        fflush(stdout);
         
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
+        answer[strcspn(answer, "\n")] = 0;
+        
+        // Check answer
+        int is_correct = (strstr(q->answer, answer) != NULL || strstr(answer, q->answer) != NULL);
+        
+        if (is_correct) {
+            printf("\n✅ CORRECT! (+%d points)\n\n", q->points);
+            correct_answers++;
+            level_score += q->points;
             
-            user_input[strcspn(user_input, "\n")] = 0;
-            
-            if (strcmp(user_input, "b") == 0) {
-                printf("✅ CORRECT! Zombie threads (not joined) + orphaned threads!\n");
-                printf("   This is why the system crashed.\n");
-                printf("   LESSON: Always pthread_join() your threads!\n");
-                printf("   NEXT: Level 1 will teach proper thread creation!\n\n");
-                correct_answers++;
-                task = 5;
-            } else {
-                printf("❌ Incorrect. The answer is 'b' - Thread management failure!\n");
-                printf("   Zombie & orphan threads caused the crash.\n\n");
+            // Increase difficulty if doing very well
+            if (correct_answers > 0 && correct_answers % 2 == 0 && current_difficulty < PROFICIENT) {
+                printf("🎉 Excellent progress! Moving to next difficulty level!\n\n");
+                current_difficulty = difficulty_get_next(current_difficulty);
             }
+        } else {
+            printf("\n❌ INCORRECT. Correct answer: %s\n", q->answer);
+            printf("⚠️  You need to answer correctly to proceed.\n\n");
+            
+            // Decrease difficulty if making mistakes
+            if (questions_answered > 2 && current_difficulty > BEGINNER) {
+                printf("📚 Let's review. Dropping to previous difficulty level.\n\n");
+                current_difficulty = difficulty_get_previous(current_difficulty);
+            }
+            continue;  // Don't count this as a completed question
         }
+        
+        questions_answered++;
+        sleep(1);  // Brief pause before next question
     }
     
-    stop_level_timer();
+    // Cancel timer thread
+    pthread_cancel(engine.timer_thread);
+    pthread_join(engine.timer_thread, NULL);
     
-    if (is_level_time_up()) {
+    // Check if level completed
+    clear_screen();
+    if (questions_answered == config.questions_required && correct_answers == config.questions_required) {
         printf("\n╔════════════════════════════════════════════════════╗\n");
-        printf("║                   💥 TIME'S UP! 💥                ║\n");
-        printf("║                                                  ║\n");
-        printf("║  You have run out of time!                       ║\n");
-        printf("║  The system has CRASHED!                         ║\n");
-        printf("║                                                  ║\n");
-        printf("║  Restarting game from the beginning...           ║\n");
-        printf("╚════════════════════════════════════════════════════╝\n");
-        sleep(2);
-        engine.current_level = 0;
-        engine.score = 0;
-        engine.levels_completed = 0;
+        printf("║  🎉 LEVEL %d COMPLETE! 🎉\n", level_id);
+        printf("║  You answered all questions correctly!\n");
+        printf("║  Level Score: +%d points\n", level_score);
+        printf("╚════════════════════════════════════════════════════╝\n\n");
+        
+        engine.score += level_score;
+        engine.levels_completed++;
+        
+        // PRODUCER: Log level completion event
+        char event_msg[EVENT_MESSAGE_SIZE];
+        snprintf(event_msg, EVENT_MESSAGE_SIZE, "LEVEL_COMPLETE: Level %d completed with score +%d", level_id, level_score);
+        event_produce(engine.event_queue, event_msg, level_id, 0);
+    } else if (is_time_up()) {
+        printf("\n╔════════════════════════════════════════════════════╗\n");
+        printf("║  ⏰ TIME'S UP!\n");
+        printf("║  Questions answered: %d/%d\n", questions_answered, config.questions_required);
+        printf("║  Correct answers: %d/%d\n", correct_answers, questions_answered);
+        printf("║  You must complete this level to proceed.\n");
+        printf("╚════════════════════════════════════════════════════╝\n\n");
+        printf("Press ENTER to retry this level...");
+        getchar();
+        return;  // Level not completed, will retry
+    } else {
+        printf("\n╔════════════════════════════════════════════════════╗\n");
+        printf("║  ❌ LEVEL FAILED\n");
+        printf("║  Questions answered: %d/%d\n", questions_answered, config.questions_required);
+        printf("║  You need to answer all questions correctly.\n");
+        printf("╚════════════════════════════════════════════════════╝\n\n");
+        printf("Press ENTER to retry this level...");
+        getchar();
         return;
     }
     
-    printf("\n╔════════════════════════════════════════════════════╗\n");
-    printf("║  ✅ LEVEL 0 COMPLETE!                                ║\n");
-    printf("║  Tasks Completed: %d/4                               ║\n", correct_answers);
-    printf("║  File system recovered. Thread apocalypse logged.    ║\n");
-    printf("║  Points Earned: %d                                   ║\n", correct_answers * 60);
-    printf("║                                                      ║\n");
-    printf("║  ⚠️  CRITICAL FINDING: Thread management failure!    ║\n");
-    printf("║  Level 1: Restore the system with proper threads     ║\n");
-    printf("╚══════════════════════════════════════════════════════╝\n");
-    
-    engine.score += correct_answers * 60;
-    engine.levels_completed++;
+    printf("Press ENTER to continue...");
+    getchar();
 }
 
-void level_1_reactor_core(void) {
-    clear_screen();
-    print_game_header();
+/* ============================================
+   LEVEL 0: LINUX COMMANDS & SHELL SCRIPTING
+   ============================================ */
+
+void level_0_linux_commands(void) {
+    run_level_with_questions(0);
+}
+
+/* ============================================
+   LEVEL 1: SYSTEM CALLS
+   ============================================ */
+
+void level_1_system_calls(void) {
+    run_level_with_questions(1);
+}
+
+/* ============================================
+   LEVEL 2: SYNCHRONIZATION
+   ============================================ */
+
+void level_2_synchronization(void) {
+    run_level_with_questions(2);
+}
+
+/* ============================================
+   LEVEL 3: CPU SCHEDULING
+   ============================================ */
+
+void level_3_scheduling(void) {
+    run_level_with_questions(3);
+}
+
+/* ============================================
+   LEVEL 4: BANKER'S ALGORITHM
+   ============================================ */
+
+void level_4_bankers_algorithm(void) {
+    run_level_with_questions(4);
+}
+
+/* ============================================
+   LEVEL 5: MEMORY & DISK MANAGEMENT
+   ============================================ */
+
+void level_5_memory_disk(void) {
+    run_level_with_questions(5);
+}
+
+/* ============================================
+   LEVEL 6: PAGE REPLACEMENT & VIRTUAL MEMORY
+   ============================================ */
+
+void level_6_paging(void) {
+    run_level_with_questions(6);
+}
+
+/* ============================================
+   MAIN MENU
+   ============================================ */
+
+void display_main_menu(void) {
+    display_header(NULL);
+    
+    printf("📊 USER: %s  |  🏆 SCORE: %d  |  ✅ LEVELS: %d/%d\n\n",
+           engine.session->current_user->username,
+           engine.score,
+           engine.levels_completed,
+           NUM_LEVELS);
     
     printf("╔════════════════════════════════════════════════════╗\n");
-    printf("║  LEVEL 1: THREAD RESTORATION                       ║\n");
-    printf("║  (Proper Thread Creation & Management)             ║\n");
+    printf("║  1. Start Next Level                              ║\n");
+    printf("║  2. View Statistics                               ║\n");
+    printf("║  3. View Help                                     ║\n");
+    printf("║  4. System Monitor (Background OS Simulation)     ║\n");
+    printf("║  5. Admin Panel (if authorized)                   ║\n");
+    printf("║  6. Logout                                        ║\n");
     printf("╚════════════════════════════════════════════════════╝\n\n");
+}
+
+void display_help(void) {
+    display_header("📖 HELP & GUIDE");
     
-    printf("🔴 CRITICAL: System full of zombie & orphan threads!\n");
-    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+    printf("GAME OVERVIEW:\n");
+    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    printf("SYS_RESCUE is an interactive OS learning game.\n");
+    printf("Answer questions to progress through 7 levels!\n\n");
     
-    printf("The previous admin left a mess of improperly managed threads.\n");
-    printf("You must write CORRECT threading code to restore the system.\n");
-    printf("Each question requires a CODE SNIPPET answer.\n\n");
+    printf("LEVELS:\n");
+    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    printf("Level 0: Linux Commands & Shell Scripting (15 mins)\n");
+    printf("Level 1: System Calls (20 mins)\n");
+    printf("Level 2: Synchronization (25 mins)\n");
+    printf("Level 3: CPU Scheduling (30 mins)\n");
+    printf("Level 4: Banker's Algorithm & Deadlock (35 mins)\n");
+    printf("Level 5: Memory Management & Disk Scheduling (40 mins)\n");
+    printf("Level 6: Page Replacement & Virtual Memory (45 mins)\n\n");
     
-    printf("⏱️  TIME LIMIT: 180 seconds (3 minutes) for 3 questions\n");
-    printf("📝 Write complete, compilable C code for each question.\n\n");
+    printf("DIFFICULTY SYSTEM:\n");
+    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    printf("🔹 Beginner  - Start here, basic concepts\n");
+    printf("🟡 Intermediate - Applied knowledge\n");
+    printf("🔶 Advanced - Complex scenarios\n");
+    printf("🔴 Proficient - Expert level\n\n");
     
-    start_level_timer(180);  // 180 seconds (3 minutes) for this level
+    printf("TIMER:\n");
+    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    printf("Each level has a strict time limit.\n");
+    printf("If time runs out, you must restart the level.\n");
+    printf("Time increases for more difficult levels!\n\n");
     
-    char user_input[512];  // Larger buffer for code snippets
-    int correct_answers = 0;
-    int question = 1;
-    
-    // QUESTION 1: Thread creation with proper structure
-    while (question == 1 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n� QUESTION 1: Thread Creation Foundation\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("Write the C code to CREATE a thread that executes a\n");
-        printf("simple function that prints 'Thread started'.\n\n");
-        printf("Include:\n");
-        printf("  1. Thread variable declaration (pthread_t)\n");
-        printf("  2. pthread_create() call with correct parameters\n");
-        printf("  3. pthread_join() to properly wait for thread\n\n");
-        printf("Paste your code snippet below (max 5 lines):\n");
-        printf(">>> ");
-        fflush(stdout);
-        
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
-            
-            user_input[strcspn(user_input, "\n")] = 0;
-            
-            // Check for key components of proper thread creation
-            int has_pthread_t = strstr(user_input, "pthread_t") != NULL;
-            int has_pthread_create = strstr(user_input, "pthread_create") != NULL;
-            int has_pthread_join = strstr(user_input, "pthread_join") != NULL;
-            int has_null_return = strstr(user_input, "NULL") != NULL;
-            
-            if (has_pthread_t && has_pthread_create && has_pthread_join && has_null_return) {
-                printf("✅ CORRECT! You have all required components:\n");
-                printf("   ✓ pthread_t variable declared\n");
-                printf("   ✓ pthread_create() with proper parameters\n");
-                printf("   ✓ pthread_join() to reap the thread\n");
-                printf("   ✓ NULL for thread attributes\n");
-                printf("   This PREVENTS zombie threads!\n\n");
-                correct_answers++;
-                question = 2;
-            } else {
-                printf("❌ Incomplete. Your code is missing:\n");
-                if (!has_pthread_t) printf("   ✗ pthread_t variable declaration\n");
-                if (!has_pthread_create) printf("   ✗ pthread_create() call\n");
-                if (!has_pthread_join) printf("   ✗ pthread_join() call\n");
-                if (!has_null_return) printf("   ✗ NULL for thread attributes\n");
-                printf("   Try again!\n\n");
-            }
-        }
-    }
-    
-    // QUESTION 2: Thread function with return value
-    while (question == 2 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n🔴 QUESTION 2: Thread Function with Return Value\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("Write a THREAD FUNCTION that:\n");
-        printf("  1. Takes an integer parameter (count = 5)\n");
-        printf("  2. Prints numbers from 1 to 'count'\n");
-        printf("  3. Returns a pointer to the result (malloc'd)\n");
-        printf("  4. Uses void* for pthread compatibility\n\n");
-        printf("Example signature: void* thread_function(void* arg)\n");
-        printf("Paste your code snippet (max 10 lines):\n");
-        printf(">>> ");
-        fflush(stdout);
-        
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
-            
-            user_input[strcspn(user_input, "\n")] = 0;
-            
-            // Check for thread function components
-            int has_void_ptr_sig = strstr(user_input, "void*") != NULL && 
-                                   (strstr(user_input, "thread_function") != NULL || 
-                                    strstr(user_input, "thread_func") != NULL);
-            int has_int_cast = strstr(user_input, "(int)") != NULL || 
-                               strstr(user_input, "(intptr_t)") != NULL;
-            int has_loop = strstr(user_input, "for") != NULL || 
-                           strstr(user_input, "while") != NULL;
-            int has_malloc = strstr(user_input, "malloc") != NULL;
-            int has_return = strstr(user_input, "return") != NULL;
-            
-            if (has_void_ptr_sig && has_int_cast && has_loop && has_malloc && has_return) {
-                printf("✅ CORRECT! Thread function has all components:\n");
-                printf("   ✓ void* return type (pthread standard)\n");
-                printf("   ✓ Proper parameter casting from void*\n");
-                printf("   ✓ Loop to process data (for/while)\n");
-                printf("   ✓ malloc() to allocate return value\n");
-                printf("   ✓ return statement with proper type\n");
-                printf("   This is a proper pthread-compatible function!\n\n");
-                correct_answers++;
-                question = 3;
-            } else {
-                printf("❌ Incomplete. Your code is missing:\n");
-                if (!has_void_ptr_sig) printf("   ✗ void* return type and function signature\n");
-                if (!has_int_cast) printf("   ✗ Proper cast from void* to int\n");
-                if (!has_loop) printf("   ✗ Loop to process data (for/while)\n");
-                if (!has_malloc) printf("   ✗ malloc() for return value\n");
-                if (!has_return) printf("   ✗ return statement\n");
-                printf("   Try again!\n\n");
-            }
-        }
-    }
-    
-    // QUESTION 3: Multiple threads with proper cleanup
-    while (question == 3 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n🔴 QUESTION 3: Multiple Threads & Cleanup\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("Create 3 threads, each with different IDs (1,2,3).\n");
-        printf("After all threads complete:\n");
-        printf("  1. Collect return values from all 3 threads\n");
-        printf("  2. Print the results\n");
-        printf("  3. Free allocated memory\n");
-        printf("  4. NO orphan or zombie threads!\n\n");
-        printf("Paste your code snippet here:\n");
-        printf(">>> ");
-        fflush(stdout);
-        
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
-            
-            user_input[strcspn(user_input, "\n")] = 0;
-            
-            // Check for proper multi-threading with cleanup
-            int has_array = strstr(user_input, "[3]") != NULL || 
-                            strstr(user_input, "[NUM_THREADS]") != NULL;
-            int has_loop_create = (strstr(user_input, "for") != NULL && 
-                                   strstr(user_input, "pthread_create") != NULL) ||
-                                  (strstr(user_input, "pthread_create") != NULL);
-            int has_join_loop = (strstr(user_input, "for") != NULL && 
-                                 strstr(user_input, "pthread_join") != NULL) ||
-                                strstr(user_input, "pthread_join") != NULL;
-            int has_free = strstr(user_input, "free") != NULL;
-            int has_void_ptr_collect = strstr(user_input, "void*") != NULL && 
-                                       strstr(user_input, "result") != NULL;
-            
-            if (has_array && has_loop_create && has_join_loop && has_free && has_void_ptr_collect) {
-                printf("✅ CORRECT! Complete multi-threading solution:\n");
-                printf("   ✓ Thread array for 3 threads\n");
-                printf("   ✓ Loop to create all threads\n");
-                printf("   ✓ Loop to join all threads (proper reaping!)\n");
-                printf("   ✓ Collection of return values\n");
-                printf("   ✓ free() to deallocate memory\n");
-                printf("   This is PROPER THREAD MANAGEMENT!\n");
-                printf("   ✅ NO ZOMBIE THREADS! NO ORPHANS! ✅\n\n");
-                correct_answers++;
-                question = 4;
-            } else {
-                printf("❌ Incomplete. Your code is missing:\n");
-                if (!has_array) printf("   ✗ Thread array (pthread_t array[3])\n");
-                if (!has_loop_create) printf("   ✗ Loop to create multiple threads\n");
-                if (!has_join_loop) printf("   ✗ Loop to join and reap threads\n");
-                if (!has_free) printf("   ✗ free() calls for cleanup\n");
-                if (!has_void_ptr_collect) printf("   ✗ Collection of void* return values\n");
-                printf("   Try again!\n\n");
-            }
-        }
-    }
-    
-    stop_level_timer();
-    
-    if (is_level_time_up()) {
-        printf("\n╔════════════════════════════════════════════════════╗\n");
-        printf("║                   💥 TIME'S UP! 💥                   ║\n");
-        printf("║  The system has CRASHED!                             ║\n");
-        printf("║  Restarting game from the beginning...               ║\n");
-        printf("╚══════════════════════════════════════════════════════╝\n");
-        sleep(2);
-        engine.current_level = 0;
-        engine.score = 0;
-        engine.levels_completed = 0;
-        return;
-    }
-    
-    printf("\n╔════════════════════════════════════════════════════╗\n");
-    printf("║  ✅ LEVEL 1 COMPLETE!                                ║\n");
-    printf("║  Code Snippets Accepted: %d/3                        ║\n", correct_answers);
-    printf("║  Threading system restored to stability!             ║\n");
-    printf("║  Points Earned: %d                                   ║\n", correct_answers * 80);
-    printf("║                                                      ║\n");
-    printf("║  ✅ NO MORE ZOMBIES! NO MORE ORPHANS! ✅             ║\n");
-    printf("╚══════════════════════════════════════════════════════╝\n");
-    
-    engine.score += correct_answers * 80;
-    engine.levels_completed++;
     press_any_key();
 }
 
-void level_2_synchronization_mastery(void) {
-    clear_screen();
-    print_game_header();
+void display_game_statistics(void) {
+    display_header("📊 YOUR STATISTICS");
     
     printf("╔════════════════════════════════════════════════════╗\n");
-    printf("║  LEVEL 2: SYNCHRONIZATION MASTERY                 ║\n");
-    printf("║  (Readers-Writers, Producer-Consumer, Dining Phil) ║\n");
+    printf("║  OVERALL PROGRESS                                 ║\n");
+    printf("║  Total Score: %d points                            ║\n", engine.score);
+    printf("║  Levels Completed: %d/%d                           ║\n", engine.levels_completed, NUM_LEVELS);
     printf("╚════════════════════════════════════════════════════╝\n\n");
     
-    printf("🔴 CRITICAL: Multiple synchronization failures!\n");
-    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
-    
-    printf("3 problems to fix:\n");
-    printf("  1. READERS-WRITERS DEADLOCK\n");
-    printf("  2. PRODUCER-CONSUMER STARVATION\n");
-    printf("  3. DINING PHILOSOPHERS DEADLOCK\n\n");
-    
-    printf("⏱️  TIME: 600 seconds (10 minutes)\n\n");
-    
-    start_level_timer(600);
-    char user_input[1024];
-    int correct_answers = 0;
-    int problem = 1;
-    
-    // PROBLEM 1
-    while (problem == 1 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n🔴 PROBLEM 1: READERS-WRITERS DEADLOCK\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("You read while admin waits to write - DEADLOCK!\n\n");
-        printf("BROKEN: Uses mutex (exclusive lock)\n");
-        printf("FIX: Use pthread_rwlock_t (readers-writers lock)\n\n");
-        printf("Your code:\n>>> ");
-        fflush(stdout);
-        
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
-            user_input[strcspn(user_input, "\n")] = 0;
-            
-            if (strstr(user_input, "rwlock") && strstr(user_input, "rdlock")) {
-                printf("✅ CORRECT!\n✓ Concurrent readers allowed\n💚 DEADLOCK PREVENTED!\n\n");
-                correct_answers++;
-                problem = 2;
-            } else {
-                printf("❌ Missing: rwlock or rdlock\n\n");
-            }
-        }
-    }
-    
-    // PROBLEM 2
-    while (problem == 2 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n🔴 PROBLEM 2: PRODUCER-CONSUMER STARVATION\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("Consumer busy-waiting, wastes CPU!\n\n");
-        printf("BROKEN: Uses sleep polling\n");
-        printf("FIX: Use sem_t (semaphores)\n\n");
-        printf("Your code:\n>>> ");
-        fflush(stdout);
-        
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
-            user_input[strcspn(user_input, "\n")] = 0;
-            
-            if (strstr(user_input, "sem_wait") && strstr(user_input, "sem_post")) {
-                printf("✅ CORRECT!\n✓ Efficient blocking\n💚 STARVATION ELIMINATED!\n\n");
-                correct_answers++;
-                problem = 3;
-            } else {
-                printf("❌ Missing: sem_wait or sem_post\n\n");
-            }
-        }
-    }
-    
-    // PROBLEM 3
-    while (problem == 3 && !is_level_time_up()) {
-        display_level_timer();
-        printf("\n🔴 PROBLEM 3: DINING PHILOSOPHERS\n");
-        printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-        printf("All philosophers deadlocked!\n\n");
-        printf("BROKEN: All use same lock order\n");
-        printf("FIX: Use asymmetric ordering\n\n");
-        printf("Your code:\n>>> ");
-        fflush(stdout);
-        
-        if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-            if (is_level_time_up()) break;
-            user_input[strcspn(user_input, "\n")] = 0;
-            
-            if (strstr(user_input, "if") && (strstr(user_input, ">") || strstr(user_input, "<"))) {
-                printf("✅ CORRECT!\n✓ Asymmetric ordering\n💚 DEADLOCK-FREE!\n\n");
-                correct_answers++;
-                problem = 4;
-            } else {
-                printf("❌ Missing: if or comparison\n\n");
-            }
-        }
-    }
-    
-    stop_level_timer();
-    
-    if (is_level_time_up()) {
-        printf("\n💥 TIME'S UP!\n");
-        sleep(2);
-        engine.current_level = 0;
-        engine.score = 0;
-        engine.levels_completed = 0;
-        return;
-    }
-    
-    printf("\n✅ LEVEL 2 COMPLETE!\n");
-    printf("Fixed: %d/3 problems\n", correct_answers);
-    printf("Points: %d\n\n", correct_answers * 100);
-    
-    engine.score += correct_answers * 100;
-    engine.levels_completed++;
     press_any_key();
 }
 
+void display_system_monitor(void) {
+    int monitoring = 1;
+    int update_count = 0;
+    
+    // Set non-blocking input mode
+    struct termios old_settings, new_settings;
+    tcgetattr(STDIN_FILENO, &old_settings);
+    new_settings = old_settings;
+    new_settings.c_lflag &= ~(ICANON | ECHO);
+    new_settings.c_cc[VMIN] = 0;
+    new_settings.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &new_settings);
+    
+    while (monitoring) {
+        system("clear");
+        display_header("🖥️  SYSTEM MONITOR - LIVE OS SIMULATION");
+        
+        printf("Real-time OS Algorithm Activity (Press 'q' to exit):\n\n");
+        
+        printf("╔════════════════════════════════════════════════════╗\n");
+        printf("║         🔄 LIVE BACKGROUND SIMULATION 🔄           ║\n");
+        printf("╚════════════════════════════════════════════════════╝\n\n");
+        
+        printf("📊 CPU SCHEDULING:\n");
+        printf("   • Operations Executed: %d\n", engine.cpu_operations_count);
+        printf("   • Algorithm: Round-Robin (RR)\n");
+        printf("   • Time Quantum: 4ms\n\n");
+        
+        printf("💾 MEMORY MANAGEMENT:\n");
+        printf("   • Allocations Performed: %d\n", engine.memory_allocations_count);
+        printf("   • Algorithm: Buddy System (First-Fit)\n");
+        printf("   • Total Memory: 1024 KB\n");
+        printf("   • Fragmentation: %.1f%%\n\n", (float)memory_get_fragmentation(engine.memory));
+        
+        printf("📄 PAGE REPLACEMENT:\n");
+        printf("   • Page Faults: %d\n", engine.page_faults_count);
+        printf("   • Algorithm: LRU (Least Recently Used)\n");
+        printf("   • Page Frames: 4\n");
+        printf("   • Page Size: 4096 bytes\n\n");
+        
+        printf("💿 DISK SCHEDULING:\n");
+        printf("   • I/O Operations: %d\n", engine.disk_operations_count);
+        printf("   • Algorithm: C-SCAN (Circular SCAN)\n");
+        printf("   • Disk Tracks: 200\n\n");
+        
+        printf("🔒 SYNCHRONIZATION:\n");
+        printf("   • Active Mutexes: 4 (users, banker, scheduler, memory)\n");
+        printf("   • Synchronization Model: POSIX Threads\n");
+        printf("   • Deadlock Prevention: Banker's Algorithm\n\n");
+        
+        printf("═══════════════════════════════════════════════════════\n");
+        printf("⚡ Update #%d (Next update in 2 seconds... Press 'q' to exit)\n", ++update_count);
+        printf("═══════════════════════════════════════════════════════\n");
+        fflush(stdout);
+        
+        // Wait 2 seconds while checking for quit command
+        for (int i = 0; i < 20; i++) {
+            usleep(100000);  // 100ms per iteration, 20 iterations = 2 seconds
+            
+            int ch;
+            while ((ch = getchar()) != EOF) {
+                if (ch == 'q' || ch == 'Q') {
+                    monitoring = 0;
+                    break;
+                }
+            }
+            
+            if (!monitoring) break;
+        }
+    }
+    
+    // Restore terminal settings
+    tcsetattr(STDIN_FILENO, TCSANOW, &old_settings);
+}
 
+/* ============================================
+   MAIN GAME LOOP
+   ============================================ */
+
+void game_loop(void) {
+    while (engine.levels_completed < NUM_LEVELS) {
+        display_main_menu();
+        
+        printf("Select option [1-6]: ");
+        char choice[10];
+        if (fgets(choice, sizeof(choice), stdin) == NULL) continue;
+        
+        int option = atoi(choice);
+        
+        switch (option) {
+            case 1:
+                switch (engine.levels_completed) {
+                    case 0: level_0_linux_commands(); break;
+                    case 1: level_1_system_calls(); break;
+                    case 2: level_2_synchronization(); break;
+                    case 3: level_3_scheduling(); break;
+                    case 4: level_4_bankers_algorithm(); break;
+                    case 5: level_5_memory_disk(); break;
+                    case 6: level_6_paging(); break;
+                }
+                break;
+                
+            case 2:
+                display_game_statistics();
+                break;
+                
+            case 3:
+                display_help();
+                break;
+                
+            case 4:
+                display_system_monitor();
+                break;
+                
+            case 5:
+                if (login_system_is_admin(engine.session)) {
+                    login_system_admin_panel(engine.session);
+                } else {
+                    printf("❌ Admin access denied.\n");
+                    sleep(2);
+                }
+                break;
+                
+            case 6:
+                printf("Logging out...\n");
+                login_system_logout(engine.session);
+                return;
+                
+            default:
+                printf("❌ Invalid option.\n");
+        }
+    }
+    
+    display_header("🎉 VICTORY!");
+    printf("You have completed all %d levels!\n", NUM_LEVELS);
+    printf("Final Score: %d points\n\n", engine.score);
+    printf("Congratulations on mastering OS concepts!\n");
+    
+    press_any_key();
+}
 
 /* ============================================
    MAIN ENTRY POINT
    ============================================ */
 
-
-/* ============================================
-   GAME LOOP
-   ============================================ */
-
-void game_loop(void) {
-    int restart_game = 1;
-    
-    while (restart_game) {
-        engine.current_level = 0;
-        engine.score = 0;
-        engine.time_remaining = 300;
-        engine.levels_completed = 0;
-        engine.time_up = 0;
-        engine.show_level_timer = 0;
-        engine.game_state = game_state_init();
-        engine.log = log_buffer_init();
-        
-        pthread_mutex_init(&engine.timer_lock, NULL);
-        engine.infrastructure = infrastructure_init();
-        
-        if (engine.infrastructure) {
-            infrastructure_log_event(engine.infrastructure, "=== GAME SESSION STARTED ===", 0);
-        }
-        
-        pthread_create(&engine.timer_thread, NULL, timer_thread_func, NULL);
-        
-        while (engine.levels_completed < 4 && !is_time_up()) {
-            display_main_menu();
-            print_game_status();
-            
-            if (is_time_up()) {
-                printf("\n💥 TIME'S UP!\n");
-                break;
-            }
-            
-            int choice = get_user_choice(1, 4);
-            
-            switch (choice) {
-                case 1:
-                    switch (engine.levels_completed) {
-                        case 0:
-                            level_0_terminal_boot();
-                            break;
-                        case 1:
-                            level_1_reactor_core();
-                            break;
-                        case 2:
-                            level_2_synchronization_mastery();
-                            break;
-                        case 3:
-                            level_3_deadlock_avoidance();
-                            break;
-                    }
-                    break;
-                case 2:
-                    print_game_status();
-                    press_any_key();
-                    break;
-                case 3:
-                    display_help();
-                    break;
-                case 4:
-                    printf("\nThanks for playing!\n");
-                    engine.time_up = 1;
-                    pthread_join(engine.timer_thread, NULL);
-                    pthread_mutex_destroy(&engine.timer_lock);
-                    game_state_destroy(engine.game_state);
-                    log_buffer_destroy(engine.log);
-                    
-                    if (engine.infrastructure) {
-                        infrastructure_log_event(engine.infrastructure, "=== GAME SESSION ENDED ===", 0);
-                        sleep(1);
-                        infrastructure_destroy(engine.infrastructure);
-                    }
-                    
-                    return;
-            }
-            
-            if (is_time_up()) {
-                printf("\n💥 TIME'S UP!\n");
-                sleep(3);
-                break;
-            }
-        }
-        
-        engine.time_up = 1;
-        pthread_join(engine.timer_thread, NULL);
-        pthread_mutex_destroy(&engine.timer_lock);
-        
-        if (engine.infrastructure) {
-            infrastructure_log_event(engine.infrastructure, "=== SESSION RESTART ===", 0);
-            sleep(1);
-            infrastructure_destroy(engine.infrastructure);
-        }
-        
-        if (!is_time_up()) {
-            printf("\n🎉 VICTORY!\n");
-            restart_game = 0;
-        } else {
-            printf("\nTry again? (YES/NO): ");
-            char restart_input[10];
-            if (fgets(restart_input, sizeof(restart_input), stdin) != NULL) {
-                if (strcasecmp(restart_input, "YES") == 0 || strcmp(restart_input, "1") == 0) {
-                    restart_game = 1;
-                } else {
-                    restart_game = 0;
-                }
-            }
-        }
-        
-        game_state_destroy(engine.game_state);
-        log_buffer_destroy(engine.log);
-    }
-}
-
-
-int main(int argc, char* argv[]) {
+int main(void) {
     srand(time(NULL));
     
-    // Parse command-line arguments
-    char* scheduler_type = NULL;
-    int time_quantum = 4;
+    // Initialize game engine
+    engine.session = login_system_init();
+    engine.question_pool = question_pool_init();
+    engine.current_level = 0;
+    engine.score = 0;
+    engine.levels_completed = 0;
+    engine.time_remaining = 0;
+    engine.time_up = 0;
     
-    for (int i = 1; i < argc; i++) {
-        if (strncmp(argv[i], "--scheduler=", 12) == 0) {
-            scheduler_type = argv[i] + 12;
-        } else if (strncmp(argv[i], "--quantum=", 10) == 0) {
-            time_quantum = atoi(argv[i] + 10);
+    pthread_mutex_init(&engine.timer_lock, NULL);
+    
+    // Initialize Producer-Consumer: Event Queue
+    engine.event_queue = event_queue_init();
+    if (engine.event_queue) {
+        if (pthread_create(&engine.event_queue->consumer_thread, NULL, event_consumer_worker, (void*)engine.event_queue) != 0) {
+            printf("❌ Failed to start event consumer thread\n");
         }
     }
+    
+    // Load questions from file
+    question_pool_load_from_file(engine.question_pool, "data/questions.txt");
+    
+    // Initialize algorithms
+    engine.banker = banker_init(3);  // 3 resources
+    engine.scheduler = scheduler_init(SCHED_RR_ALG, 4);  // Round-robin with quantum 4
+    engine.memory = memory_init(1024, PLACE_BEST_FIT);  // 1KB memory, best-fit
+    engine.paging = page_system_init(4, PAGE_LRU);  // 4 frames, LRU
+    engine.disk_sched = disk_scheduler_init(200, DISK_CSCAN);  // 200 tracks, C-SCAN
     
     // Display boot sequence
-    clear_screen();
-    FILE* logo_file = fopen("assets/boot_logo.txt", "r");
-    if (logo_file) {
-        char line[256];
-        while (fgets(line, sizeof(line), logo_file)) {
-            printf("%s", line);
-        }
-        fclose(logo_file);
-    } else {
-        print_game_header();
-        printf("Beginning recovery sequence...\n");
-    }
-    
+    display_header(NULL);
+    printf("Initializing SYS_RESCUE...\n");
+    sleep(1);
+    printf("✓ Question pool loaded\n");
+    sleep(1);
+    printf("✓ Algorithms initialized\n");
+    sleep(1);
+    printf("✓ Ready to start\n\n");
     press_any_key();
     
-    // Start game
+    // Login flow
+    if (!login_flow()) {
+        printf("Exiting SYS_RESCUE.\n");
+        return 0;
+    }
+    
+    // Start background simulation
+    start_background_simulation();
+    
+    // Main game loop
     game_loop();
     
-    return 0;
-}
-
-void display_main_menu(void) {
-    clear_screen();
-    print_game_header();
-    printf("╔════════════════════════════════════════════════════╗\n");
-    printf("║            🎮 MAIN MENU 🎮                        ║\n");
-    printf("║  1. Continue Game                                 ║\n");
-    printf("║  2. View Game Status                              ║\n");
-    printf("║  3. View Help & Controls                          ║\n");
-    printf("║  4. Quit Game                                     ║\n");
-    printf("╚════════════════════════════════════════════════════╝\n\n");
-}
-
-void display_help(void) {
-    clear_screen();
-    printf("╔════════════════════════════════════════════════════╗\n");
-    printf("║              📖 HELP & CONTROLS 📖                ║\n");
-    printf("╚════════════════════════════════════════════════════╝\n\n");
-    printf("GAME OBJECTIVE:\n");
-    printf("Solve 4 challenging OS-based puzzles.\n\n");
-    printf("LEVELS:\n");
-    printf("  Level 0: File System Recovery\n");
-    printf("  Level 1: Thread Restoration\n");
-    printf("  Level 2: Synchronization Mastery\n");
-    printf("  Level 3: Scheduling\n\n");
-    printf("USERNAME: 'username'\n\n");
-    press_any_key();
-}
-
-void level_3_deadlock_avoidance(void) {
-    clear_screen();
-    print_game_header();
-    printf("╔════════════════════════════════════════════════════╗\n");
-    printf("║  LEVEL 3: MULTI-ALGORITHM MASTERY                 ║\n");
-    printf("║  (Round-Robin & Priority Scheduling)              ║\n");
-    printf("╚════════════════════════════════════════════════════╝\n\n");
+    // Stop background simulation
+    stop_background_simulation();
     
-    start_level_timer(60);
+    // Cleanup
+    login_system_destroy(engine.session);
+    question_pool_destroy(engine.question_pool);
     
-    char user_input[100];
-    int correct_answers = 0;
-    
-    display_level_timer();
-    printf("Q1: In Round-Robin with quantum=3ms, what happens if burst > quantum?\n");
-    printf("  b) Task goes to back of queue\n");
-    printf(">>> ");
-    fflush(stdout);
-    
-    if (fgets(user_input, sizeof(user_input), stdin) != NULL) {
-        if (!is_level_time_up()) {
-            user_input[strcspn(user_input, "\n")] = 0;
-            if (strcmp(user_input, "b") == 0) {
-                printf("✅ CORRECT!\n");
-                correct_answers++;
-            }
-        }
+    // Destroy Producer-Consumer: Event Queue
+    if (engine.event_queue) {
+        event_queue_destroy(engine.event_queue);
     }
     
-    stop_level_timer();
+    banker_destroy(engine.banker);
+    scheduler_destroy(engine.scheduler);
+    memory_destroy(engine.memory);
+    page_system_destroy(engine.paging);
+    disk_scheduler_destroy(engine.disk_sched);
+    pthread_mutex_destroy(&engine.timer_lock);
     
-    printf("\n✅ LEVEL 3 COMPLETE!\n");
-    printf("Points: %d\n\n", correct_answers * 75);
+    printf("Thanks for playing SYS_RESCUE!\n");
     
-    engine.score += correct_answers * 75;
-    engine.levels_completed++;
-    press_any_key();
+    return 0;
 }

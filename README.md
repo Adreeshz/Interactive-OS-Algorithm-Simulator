@@ -1,453 +1,230 @@
-# Interactive OS Algorithm Simulator
+# SYS_RESCUE: Interactive OS Algorithm Simulator
 
-## Project Overview
+A terminal-based educational game that teaches core Operating System concepts through interactive gameplay.
 
-An interactive, terminal-based survival game built in C and Bash. Players assume the role of a system "Kernel" to save a catastrophically failing mainframe by solving real OS algorithmic puzzles. The game serves as a custom, lightweight engine that physically runs on the very OS concepts it teaches.
+## Overview
 
-### Game Concept
-Instead of reading textbooks, players engage in 5 high-stakes escape rooms, each targeting a specific OS challenge:
-- **Level 0**: Terminal Boot Sequence
-- **Level 1**: The Reactor Core (Synchronization)
-- **Level 2**: The CPU Bottleneck (Scheduling)
-- **Level 3**: The System Gridlock (Deadlock Avoidance)
-- **Level 4**: The Memory Leak (Memory Allocation)
-- **Level 5**: The Data Extraction (Disk Scheduling)
+SYS_RESCUE is an escape room-style simulator where players act as the OS kernel to save a failing mainframe by mastering 7 major OS algorithms and concepts:
 
----
+1. **Level 0**: Basic Linux Commands & Shell Scripting
+2. **Level 1**: System Calls
+3. **Level 2**: Synchronization Primitives (Mutexes, Semaphores)
+4. **Level 3**: CPU Scheduling Algorithms (FCFS, RR, Priority)
+5. **Level 4**: Banker's Algorithm & Deadlock Detection
+6. **Level 5**: Memory Management & Disk Scheduling (Buddy System, FCFS, SSTF, SCAN, C-SCAN)
+7. **Level 6**: Page Replacement & Virtual Memory (FIFO, LRU, Optimal)
 
-## Project Architecture
+## Features
 
-### File Structure
-```
-sys_rescue/
-├── sys_rescue.sh              # Bootloader & launcher script (Bash)
-├── Makefile                   # Build configuration
-├── src/
-│   ├── main.c                 # Game loop, UI, and level implementations
-│   ├── sync_engine.c          # Producer-Consumer, Readers-Writers, Dining Philosophers
-│   └── scheduler.c            # FCFS, SJF, Priority, Round Robin algorithms
-├── include/
-│   ├── sync_engine.h          # Synchronization function prototypes
-│   └── scheduler.h            # Scheduler data structures
-├── assets/
-│   └── boot_logo.txt          # ASCII art boot screen
-└── obj/                       # Compiled object files (auto-generated)
-```
+- **7 Comprehensive Levels**: Progress through major OS concepts
+- **Adaptive Difficulty**: Questions adjust based on your performance
+- **Proficiency Tracking**: Track your progress on each level
+- **Active Sessions Monitoring**: Admin panel shows 8 simulated concurrent players
+- **Timed Challenges**: 30 minutes per level
+- **Point System**: Up to 700 total points (100 per level)
 
-### Technology Stack
-- **Languages**: C (core engine), Bash (wrapper/launcher)
-- **Threading**: POSIX Threads (pthreads)
-- **Synchronization**: Mutex, Semaphores, Read-Write Locks
-- **Compilation**: GCC with pthread support
-- **Environment**: Linux/Unix Terminal
-
----
-
-## Build Instructions
+## Quick Start
 
 ### Prerequisites
-- GCC compiler with pthread support
-- GNU Make
-- Linux/Unix environment
-- Bash shell
+- GCC compiler
+- POSIX-compliant system (Linux/Unix/macOS)
+- Make build system
 
-### Compilation
+### Build & Run
 
-#### Option 1: Using the Makefile directly
 ```bash
 cd sys_rescue
-make all          # Build everything
-make clean        # Remove object files and binary
-make rebuild      # Clean and rebuild
-make info         # Display build information
-```
-
-#### Option 2: Using the bootloader script
-```bash
-cd sys_rescue
-./sys_rescue.sh   # Automatically compiles if needed and launches game
-```
-
-#### Build Output
-- **Binary**: `sys_rescue_engine` (compiled C executable)
-- **Objects**: `obj/` directory (auto-created)
-- **Size**: ~136 KB executable
-
----
-
-## Running the Game
-
-### Basic Launch
-```bash
-./sys_rescue.sh              # Launch with default settings
-./sys_rescue.sh --help       # Display help message
-```
-
-### Advanced Options
-```bash
-./sys_rescue.sh --scheduler=RR --quantum=4      # Force Round Robin with 4ms quantum
-./sys_rescue.sh --scheduler=SJF                 # Force Shortest Job First
-```
-
-### Command-Line Arguments
-- `--scheduler=TYPE` - Override scheduler algorithm (FCFS, SJF, PRIORITY, RR)
-- `--quantum=VALUE` - Set time quantum for Round Robin (milliseconds)
-- `--help` - Display usage information
-
----
-
-## Game Levels & Puzzles
-
-### Level 0: Terminal Boot (Practicals 1 & 2)
-**Concept**: Bash scripting and system permissions
-**Puzzle**: Type the compile command to bootstrap the recovery engine
-**Solution**: Type `make` or `make all`
-
-### Level 1: Reactor Core (Practical 3)
-**Concepts**: 
-- Producer-Consumer synchronization
-- Readers-Writers problem
-- Dining Philosophers problem
-
-**Available Demos**:
-1. Producer-Consumer Event Logger (with semaphores)
-2. Readers-Writers Game State (with R/W locks)
-3. Dining Philosophers (Asymmetric solution)
-
-### Level 2: CPU Bottleneck (Practical 4)
-**Concepts**: Task scheduling algorithms
-**Task Set**: 4 tasks with different burst times and priorities
-**Algorithms**:
-1. FCFS - First Come, First Serve (sequential)
-2. SJF - Shortest Job First (optimal for this scenario)
-3. Priority - Priority-based execution
-4. Round Robin - Time-shared scheduling
-
-**Optimal Solution**: SJF minimizes average waiting time
-
-### Level 3: System Gridlock
-**Concept**: Deadlock detection using Banker's Algorithm
-**Puzzle**: Determine if system is in a safe state
-**Answer**: YES (safe sequence exists: A → B → C)
-
-### Level 4: Memory Leak
-**Concept**: Memory allocation strategies
-**Puzzle**: Choose optimal memory allocation strategy for fragmented RAM
-**Options**:
-1. First Fit
-2. Best Fit ✓
-3. Worst Fit
-4. Buddy System ✓
-
-### Level 5: Data Extraction (Final Level)
-**Concept**: Disk scheduling (SSTF - Shortest Seek Time First)
-**Puzzle**: Find optimal cylinder sequence to recover master password
-**Fragments**: Located at cylinders 28, 86, 143, 190, 225
-**Optimal Path**: 28 → 86 → 143 → 190 → 225
-
----
-
-## Module Details
-
-### sync_engine.h & sync_engine.c
-Implements three classic synchronization problems:
-
-#### Producer-Consumer Pattern
-```c
-typedef struct {
-    char log_buffer[10][256];
-    int head, tail, count;
-    pthread_mutex_t log_mutex;
-    sem_t empty;  // 10 slots initially
-    sem_t full;   // 0 slots initially
-} LogBuffer;
-```
-**Synchronization**: Semaphores + Mutex ensure thread-safe buffer access
-
-#### Readers-Writers Problem
-```c
-typedef struct {
-    int score;
-    int time_left;
-    int current_room;
-    pthread_rwlock_t state_lock;  // Multiple readers, exclusive writers
-} GameState;
-```
-**Synchronization**: Read-Write locks allow concurrent readers
-
-#### Dining Philosophers
-```c
-pthread_mutex_t channels[5];  // 5 forks/channels
-```
-**Solution**: Asymmetric locking - {0,1,2,3} lock left→right; {4} locks right→left
-
-### scheduler.h & scheduler.c
-Implements four classic scheduling algorithms:
-
-#### Data Structure
-```c
-typedef struct {
-    int id;
-    int burst_time;
-    int priority;
-    int arrival_time;
-    int completion_time;
-    int waiting_time;
-    int turnaround_time;
-} Task;
-```
-
-#### Algorithms
-- **FCFS**: Execute in arrival order
-- **SJF**: Sort by burst_time (ascending)
-- **Priority**: Sort by priority value
-- **Round Robin**: Time-share with quantum
-
-#### Statistics Calculated
-- Average waiting time
-- Average turnaround time
-- Total CPU time
-- CPU utilization percentage
-
-### main.c
-Game engine with:
-- **Game loop** and state management
-- **5 levels** with interactive puzzles
-- **Terminal UI** with status display
-- **Score tracking** system
-- **Boss queue** - processes user input and calculates solutions
-
----
-
-## Bootloader Process (sys_rescue.sh)
-
-### Execution Sequence
-1. **Display Boot Screen**: ASCII art logo
-2. **Verify Directory**: Check for Makefile and project structure
-3. **Check Binary**: Look for pre-compiled executable
-4. **Compile** (if needed): Run Makefile and verify permissions
-5. **Parse Arguments**: Extract --scheduler and --quantum flags
-6. **Launch Engine**: Execute binary with all arguments
-
-### Error Handling
-- Verifies project structure before compilation
-- Automatically fixes missing execute permissions
-- Clear error messages for troubleshooting
-- Exit codes for scripting integration
-
----
-
-## Compilation Details
-
-### Compiler Flags
-```
--Wall -Wextra         # Enable all common warnings
--std=c99              # C99 standard
--pthread              # POSIX threads support
--O2                   # Optimization level 2
--g                    # Debug symbols
--D_GNU_SOURCE         # GNU extensions
--D_POSIX_C_SOURCE=200809L  # POSIX features
-```
-
-### Linking
-```
--pthread              # Link pthread library
--lm                   # Link math library
-```
-
-### Key Headers Used
-- `<pthread.h>` - Threading primitives
-- `<semaphore.h>` - Semaphores
-- `<stdio.h>` - I/O operations
-- `<stdlib.h>` - Memory management
-- `<string.h>` - String operations
-
----
-
-## Game Scoring
-
-| Level | Task | Base Points |
-|-------|------|-------------|
-| 0 | Boot Sequence | 100 |
-| 1 | Synchronization (any) | 150 |
-| 1 | Full Analysis | 150 |
-| 2 | Scheduler Puzzle | 200 |
-| 2 | Full Analysis | 200 |
-| 3 | Deadlock Detection | 250 |
-| 4 | Memory Allocation | 250 |
-| 5 | Disk Scheduling | 300 |
-
-**Total Maximum Score**: 1,600 points
-
----
-
-## Features Implemented
-
-### ✅ Synchronization Engine (Practical 3)
-- [x] Producer-Consumer with circular buffer and semaphores
-- [x] Readers-Writers with read-write locks
-- [x] Dining Philosophers with asymmetric solution
-- [x] Thread creation and synchronization
-- [x] Mutex locks and semaphore operations
-- [x] File I/O in synchronized environment
-
-### ✅ Scheduler Engine (Practical 4)
-- [x] FCFS scheduling algorithm
-- [x] SJF scheduling algorithm
-- [x] Priority-based scheduling
-- [x] Round Robin time-sharing
-- [x] Performance statistics calculation
-- [x] Turnaround and waiting time analysis
-- [x] Array sorting for task ordering
-
-### ✅ Interactive Game UI (Main Engine)
-- [x] Game loop and state management
-- [x] 5 playable levels with puzzles
-- [x] Terminal-based user interface
-- [x] Score tracking system
-- [x] Status display
-- [x] Input validation
-- [x] ASCII art bootloader
-
-### ✅ Boot System (Practicals 1 & 2)
-- [x] Bash bootloader script
-- [x] Automatic compilation checks
-- [x] Permission verification
-- [x] Argument parsing
-- [x] Error handling
-- [x] ASCII art display
-
----
-
-## Troubleshooting
-
-### Compilation Errors
-**Issue**: `pthread_rwlock_t: unknown type`
-- **Solution**: Ensure `-pthread` flag is in CFLAGS and LDFLAGS
-
-**Issue**: `Makefile not found`
-- **Solution**: Run script from sys_rescue directory
-
-### Runtime Issues
-**Issue**: Binary not found
-- **Solution**: Run `make all` first, or use `./sys_rescue.sh`
-
-**Issue**: Permission denied on sys_rescue_engine
-- **Solution**: Run `chmod +x sys_rescue_engine` manually
-
-### Game Issues
-**Issue**: Logo file not found
-- **Solution**: Run game from sys_rescue directory
-- Game continues without logo if file missing
-
----
-
-## Testing & Validation
-
-### Compile Test
-```bash
-make clean && make all
-```
-Should produce: `✅ Compilation successful!`
-
-### Binary Test
-```bash
-./sys_rescue_engine
-```
-Should display: Boot screen and main menu
-
-### Full Integration Test
-```bash
+make clean && make
 ./sys_rescue.sh
 ```
-Should run complete bootloader and game
 
----
+### Default Credentials
 
-## Educational Objectives
+**Regular User:**
+- Username: `user1`
+- Password: `pass123`
+
+**Admin User:**
+- Username: `admin`
+- Password: `admin123`
+
+## Gameplay
+
+1. **Login/Register**: Create an account or use default credentials
+2. **Select Level**: Start with Level 0 and progress sequentially
+3. **Answer Questions**: 5 adaptive difficulty questions per level
+4. **Track Progress**: View statistics and proficiency metrics
+5. **Complete All Levels**: Achieve victory after completing all 7 levels
+
+## Project Structure
+
+```
+sys_rescue/
+├── src/                    # Source code
+│   ├── main.c             # Game engine and levels
+│   ├── algorithms.c       # OS algorithm implementations
+│   ├── login_system.c     # User authentication
+│   ├── question_pool.c    # Question management
+│   ├── scheduler.c        # Scheduling module
+│   ├── sync_engine.c      # Synchronization module
+│   ├── game_infrastructure.c
+│   ├── user_management.c
+│   └── active_sessions.c  # Live player monitoring
+├── include/               # Header files
+├── data/                  # Game data (questions, user database)
+├── assets/                # Game assets (logos, graphics)
+├── obj/                  # Compiled object files
+├── Makefile              # Build configuration
+└── sys_rescue.sh         # Game launcher script
+```
+
+## Admin Features
+
+Press `4` in the main menu to access the admin panel (admin login required):
+
+- **View Active Sessions**: Monitor 8 simulated concurrent players
+- **View Player Details**: See individual player statistics
+- **Watch Live Updates**: Real-time player activity monitoring
+
+## Scoring System
+
+- **Per Question**: 20 points
+- **Per Level**: 5 questions × 20 = 100 points
+- **Total Game**: 7 levels × 100 = 700 points maximum
+
+## Difficulty Levels
+
+- 🔹 **Beginner**: Fundamental concepts
+- 🟡 **Intermediate**: Applied knowledge
+- 🔶 **Advanced**: Complex scenarios
+- 🔴 **Proficient**: Expert level
+
+Difficulty adjusts automatically:
+- Score ≥80%: Advance to next difficulty
+- Score <50%: Drop to previous difficulty
+- **New**: Every 2 correct answers increases difficulty (improved progression)
+
+## Question Pool
+
+The game now features **175 expertly-crafted questions** across all 7 levels:
+
+| Level | Topic | Questions | Difficulty Levels |
+|-------|-------|-----------|------------------|
+| 0 | Linux Commands | 71 | Beginner → Proficient |
+| 1 | System Calls | 60 | Beginner → Proficient |
+| 2 | Synchronization | 58 | Beginner → Proficient |
+| 3 | CPU Scheduling | 55 | Beginner → Proficient |
+| 4 | Banker's Algorithm | 27 | Beginner → Proficient |
+| 5 | Memory Management | 27 | Beginner → Proficient |
+| 6 | Virtual Memory | 27 | Beginner → Proficient |
+| **TOTAL** | **All Levels** | **175** | **4 Levels Each** |
+
+**Features**:
+- No repeated questions within a single level
+- Rich diversity across all difficulty levels
+- Comprehensive coverage of each OS topic
+
+## Compilation
+
+```bash
+make clean    # Remove old build artifacts
+make          # Compile the project
+make help     # Show build options
+```
+
+## Technical Details
+
+### Technologies Used
+- POSIX Threads (pthreads)
+- Mutex synchronization
+- Thread-safe data structures
+- Adaptive question system
+- Real-time player simulation
+
+### Key Algorithms
+- Basic Linux Commands & Shell Scripting
+- System Calls (fork, exec, wait, etc.)
+- Mutex/Semaphore Synchronization
+- FCFS, Round-Robin, Priority Scheduling
+- Banker's Algorithm (Deadlock Avoidance)
+- Buddy System Memory Allocation
+- FIFO/LRU/Optimal Page Replacement
+- SCAN/C-SCAN Disk Scheduling
+
+## Gameplay Tips
+
+1. **Start Easy**: Begin with Beginner difficulty to learn concepts
+2. **Answer Carefully**: Focus on understanding, not just speed
+3. **Use Hints**: Each question has a helpful hint
+4. **Track Progress**: Check statistics regularly
+5. **View Active Sessions**: Check admin panel to see other players (admin only)
+6. **Master Each Level**: Complete all 7 levels to win the game
+7. **Difficulty Progression**: Every 2 correct answers unlocks harder questions
+
+## System Requirements
+
+- **OS**: Linux, macOS, or Unix-like system
+- **Compiler**: GCC or compatible C compiler
+- **Memory**: 50+ MB available RAM
+- **Terminal**: 80+ column width recommended
+
+## Building from Source
+
+```bash
+# Navigate to project directory
+cd sys_rescue
+
+# Clean previous builds
+make clean
+
+# Compile all modules
+make
+
+# Run the game
+./sys_rescue.sh
+```
+
+## Gameplay Duration
+
+- **Per Level**: 15-30 minutes (depending on difficulty)
+- **Full Game**: 3-4 hours for complete playthrough
+- **Admin Monitoring**: Additional 30 minutes to explore features
+
+## Educational Value
 
 This simulator teaches:
+- Operating system fundamentals
+- Basic Linux commands and scripting
+- System calls and process management
+- Concurrency control and synchronization
+- CPU scheduling optimization
+- Deadlock detection and avoidance
+- Memory management strategies
+- Virtual memory principles
+- I/O optimization techniques
 
-1. **Synchronization Primitives**
-   - Mutex locks and deadlock avoidance
-   - Semaphores for resource counting  
-   - Read-Write locks for concurrent access
+## Version Information
 
-2. **Process Scheduling**
-   - Algorithm comparison and optimization
-   - Performance metrics (waiting time, turnaround time)
-   - Context switching overhead
+- **Version**: 2.0.0
+- **Levels**: 7 complete levels
+- **Questions**: 175 total adaptive difficulty questions (25+ per level)
+- **Max Score**: 700 points (100 per level)
+- **Status**: Production Ready ✅
 
-3. **System Deadlocks**
-   - Banker's Algorithm
-   - Resource allocation safety
-   - Cycle detection
+## Recent Improvements (v2.0.0)
 
-4. **Memory Management**
-   - Fragmentation and allocation strategies
-   - Memory hierarchy implications
+- ✅ **Enhanced Difficulty System**: Threshold reduced from every 3 to every 2 correct answers for better progression
+- ✅ **Expanded Question Pool**: 175 questions (up from 85) providing greater variety per level
+- ✅ **No Question Repetition**: Advanced tracking prevents same question appearing twice in a level
+- ✅ **Cleaned Codebase**: Removed unused code and consolidated documentation
+- ✅ **Zero Compilation Errors**: Fully tested and optimized
 
-5. **Disk I/O Scheduling**
-   - Seek time optimization
-   - SSTF algorithm
+## Getting Help
 
-6. **System Integration**
-   - Bash scripting for system automation
-   - Process compilation and execution
-   - Command-line argument parsing
-
----
-
-## Performance Characteristics
-
-- **Binary Size**: ~136 KB
-- **Compilation Time**: < 5 seconds
-- **Startup Time**: < 1 second
-- **Memory Usage**: ~5 MB (with pthread stacks)
-- **Threading**: 5+ concurrent threads in synchronization levels
+1. **In-Game Help**: Press `3` in the main menu for tutorials
+2. **View Statistics**: Press `2` to track your progress
+3. **Admin Panel**: Press `4` to view system status (admin only)
 
 ---
 
-## Future Enhancement Ideas
-
-1. Additional OS concepts (Virtual Memory, File Systems)
-2. Network-based multiplayer mode
-3. Persistent leaderboard (scores)
-4. Extended difficulty levels
-5. Custom scenario creation
-6. Performance profiling tools
-7. Breakpoint/single-step debugging mode
-8. Documentation browser in-game
-
----
-
-## License & Attribution
-
-This project is an educational simulator created for OS coursework.
-
----
-
-## Quick Reference
-
-### File Purposes
-| File | Purpose |
-|------|---------|
-| sys_rescue.sh | Boot and launch wrapper |
-| Makefile | Build configuration |
-| src/main.c | Game engine and UI |
-| src/sync_engine.c | Synchronization implementations |
-| src/scheduler.c | Scheduling algorithms |
-| include/*.h | Function prototypes and data structures |
-| assets/boot_logo.txt | ASCII art for bootscreen |
-
-### Key Functions
-- `game_loop()` - Main game state machine
-- `level_*()` - Individual level implementations
-- `pthread_*()` - POSIX thread operations
-- `schedule_*()` - Scheduler algorithms
-- `*_demo()` - Interactive demonstrations
-
----
-
-**Ready to rescue the mainframe? Run ./sys_rescue.sh to begin!**
+**Ready to become an OS master?** Start the game and save the mainframe! 🚀

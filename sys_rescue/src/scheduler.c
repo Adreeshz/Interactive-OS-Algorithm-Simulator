@@ -274,6 +274,79 @@ void schedule_round_robin(ReadyQueue* rq, int time_quantum, SchedulerStats* stat
     display_statistics(stats);
 }
 
+void schedule_round_robin_priority(ReadyQueue* rq, int time_quantum, SchedulerStats* stats) {
+    printf("\n=== ROUND ROBIN WITH PRIORITY PREEMPTION ===\n");
+    printf("Time Quantum: %d ms\n", time_quantum);
+    printf("Priority levels: 1=HIGH, 2=MEDIUM, 3=LOW\n\n");
+    
+    if (!rq || rq->count == 0) {
+        printf("Queue is empty!\n");
+        return;
+    }
+    
+    // Create array to track remaining time for each task
+    int remaining[MAX_TASKS];
+    int completed = 0;
+    int current_time = 0;
+    
+    for (int i = 0; i < rq->count; i++) {
+        remaining[i] = rq->tasks[i].burst_time;
+    }
+    
+    printf("%-8s %-8s %-20s %-12s %-18s %-15s\n", 
+           "Time", "PID", "Task", "Priority", "Remaining", "Action");
+    printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    
+    while (completed < rq->count) {
+        // Find highest priority ready task (lowest priority value = highest priority)
+        int best_task = -1;
+        int best_priority = 999;
+        
+        for (int i = 0; i < rq->count; i++) {
+            if (remaining[i] > 0 && rq->tasks[i].priority < best_priority) {
+                best_task = i;
+                best_priority = rq->tasks[i].priority;
+            }
+        }
+        
+        if (best_task == -1) break;  // No ready task
+        
+        Task* task = &rq->tasks[best_task];
+        
+        // Execute for time quantum or until completion
+        int execute_time = (remaining[best_task] < time_quantum) ? 
+                           remaining[best_task] : time_quantum;
+        
+        remaining[best_task] -= execute_time;
+        
+        const char* priority_str = task->priority == 1 ? "HIGH  " :
+                                   task->priority == 2 ? "MEDIUM" : "LOW   ";
+        
+        if (remaining[best_task] == 0) {
+            // Task completed
+            task->completion_time = current_time + execute_time;
+            task->turnaround_time = task->completion_time - task->arrival_time;
+            task->waiting_time = task->turnaround_time - task->burst_time;
+            
+            printf("%-8d P%-7d %-20s %s %12d %-15s\n",
+                   current_time, task->id, task->task_name, 
+                   priority_str, remaining[best_task], "COMPLETED");
+            completed++;
+        } else {
+            // Task preempted - will be re-queued
+            printf("%-8d P%-7d %-20s %s %12d %-15s\n",
+                   current_time, task->id, task->task_name, 
+                   priority_str, remaining[best_task], "PREEMPTED");
+        }
+        
+        current_time += execute_time;
+    }
+    
+    printf("\n");
+    calculate_statistics(rq, stats);
+    display_statistics(stats);
+}
+
 /* ============================================
    INTERACTIVE GAME FUNCTIONS
    ============================================ */
