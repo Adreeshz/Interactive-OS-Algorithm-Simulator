@@ -84,14 +84,17 @@ pthread_create(&engine.event_queue->consumer_thread, NULL,
 
 ### Key System Call Functions Used
 
-| Function | Purpose |
-|----------|---------|
-| `pthread_create()` | Create new threads for concurrent operations |
-| `pthread_join()` | Wait for thread completion (cleanup) |
-| `pthread_mutex_init/destroy()` | Initialize/destroy mutual exclusion locks |
-| `sem_init/destroy()` | Initialize/destroy semaphores |
-| `sleep()` | System call to pause thread execution |
-| `pthread_mutex_lock/unlock()` | Acquire/release mutex for critical sections |
+| Function | Purpose | Where Used |
+|----------|---------|-----------|
+| `pthread_create()` | Create new threads for concurrent operations | All thread initialization |
+| `pthread_join()` | Wait for thread completion (cleanup) | Thread termination |
+| `pthread_mutex_init/destroy()` | Initialize/destroy mutual exclusion locks | Synchronization |
+| `sem_init/destroy()` | Initialize/destroy semaphores | Event queue |
+| `sleep()` | System call to pause thread execution | Active sessions simulation (2 sec) |
+| `usleep()` | Microsecond sleep | Event processing (10ms), background simulation (500ms) |
+| **`getpid()`** | **Get current process ID** | **Admin panel process monitoring** |
+| **`fork()`** | **Create child processes** | **Simulator process spawning** |
+| **`kill(pid, signal)`** | **Send signals to processes** | **Process termination (SIGTERM, SIGKILL, SIGUSR1, SIGUSR2)** |
 
 ### Cleanup & Thread Lifecycle
 
@@ -120,6 +123,81 @@ if (engine.event_queue) {
     event_queue_destroy(engine.event_queue);  // Joins consumer thread
 }
 ```
+
+#### 1.4 Admin Panel: View Active Sessions with Process Management
+**Location:** `src/login_system.c:149-394`, Admin Panel Option 5
+
+**Purpose:**
+- Comprehensive active sessions monitoring with process management
+- Demonstrate `fork()`, `getpid()`, and `kill()` system calls in action
+- Allow admins to view and manage active user processes
+- Live monitoring and signal-based process control
+- Educational demonstration of OS process management
+
+**System Calls Demonstrated:**
+
+```c
+/* SYSTEM CALL 1: getpid() - Get Process ID */
+pid_t admin_pid = getpid();
+printf("Admin Process PID: %d\n", admin_pid);
+
+/* SYSTEM CALL 2: fork() - Create Child Process */
+/* Simulated during user process spawning */
+pid_t child_pid = fork();
+if (child_pid == -1) {
+    /* Fork failed */
+} else if (child_pid == 0) {
+    /* Child process */
+    exit(0);
+} else {
+    /* Parent process - store child PID for tracking */
+    user->pid = child_pid;
+}
+
+/* SYSTEM CALL 3: kill() - Send Signals */
+/* Various signal types demonstrated */
+int signals[] = {SIGTERM, SIGKILL, SIGUSR1, SIGUSR2};
+for (int i = 0; i < 4; i++) {
+    if (kill(pid_to_terminate, signals[i]) == 0) {
+        printf("Signal sent successfully\n");
+    }
+}
+```
+
+**Admin Features (Unified Option 5):**
+
+1. **View Active Processes:**
+   - Displays all currently active user processes
+   - Shows simulated PIDs (from fork() calls)
+   - Shows process status and ownership
+
+2. **Signal Management:**
+   - **SIGTERM (15):** Graceful termination - allows process cleanup
+   - **SIGKILL (9):** Forced termination - cannot be caught
+   - **SIGUSR1 (10):** Custom signal - for custom process handling
+   - **SIGUSR2 (12):** Custom signal - for custom process handling
+
+3. **Player Details:**
+   - View detailed statistics of individual players
+   - Check score, level, violations, activity time
+
+4. **Live Monitoring:**
+   - Watch live session updates (10 cycles)
+   - 2-second interval between updates
+   - Real-time player state changes
+
+5. **Admin Menu (Option 5):**
+   ```
+   ACTIVE SESSIONS MENU
+   1. View Active Processes (getpid demo)
+   2. Send SIGTERM to User (graceful shutdown)
+   3. Send SIGKILL to User (forced termination)
+   4. Send SIGUSR1 to User (custom signal)
+   5. Send SIGUSR2 to User (custom signal)
+   6. View Player Details
+   7. Watch Live Updates (10 cycles)
+   8. Back to Admin Menu
+   ```
 
 ---
 

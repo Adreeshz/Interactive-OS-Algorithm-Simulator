@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <pthread.h>
+#include <poll.h>
 #include <semaphore.h>
 #include <ctype.h>
 #include <stdint.h>
@@ -17,7 +18,7 @@
 #include "login_system.h"
 #include "algorithms.h"
 
-#define GAME_TITLE "SYS_RESCUE: Interactive OS Algorithm Simulator"
+#define GAME_TITLE "Interactive OS Algorithm Simulator"
 #define GAME_VERSION "2.0.0"
 #define LEVEL_TIME_LIMIT 1800  // 30 minutes per level
 
@@ -592,7 +593,7 @@ void display_help(void) {
     
     printf("GAME OVERVIEW:\n");
     printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    printf("SYS_RESCUE is an interactive OS learning game.\n");
+    printf("Interactive OS Algorithm Simulator is an interactive OS learning game.\n");
     printf("Answer questions to progress through 7 levels!\n\n");
     
     printf("LEVELS:\n");
@@ -636,8 +637,8 @@ void display_game_statistics(void) {
 void display_system_monitor(void) {
     int monitoring = 1;
     int update_count = 0;
-    
-    // Set non-blocking input mode
+
+    // Use non-canonical mode for immediate key reads
     struct termios old_settings, new_settings;
     tcgetattr(STDIN_FILENO, &old_settings);
     new_settings = old_settings;
@@ -645,67 +646,80 @@ void display_system_monitor(void) {
     new_settings.c_cc[VMIN] = 0;
     new_settings.c_cc[VTIME] = 0;
     tcsetattr(STDIN_FILENO, TCSANOW, &new_settings);
-    
+
+    // use poll + read for reliable non-blocking input
+    struct pollfd pfd;
+    pfd.fd = STDIN_FILENO;
+    pfd.events = POLLIN;
+
     while (monitoring) {
         system("clear");
-        display_header("🖥️  SYSTEM MONITOR - LIVE OS SIMULATION");
-        
+        display_header("SYSTEM MONITOR - LIVE OS SIMULATION");
+
         printf("Real-time OS Algorithm Activity (Press 'q' to exit):\n\n");
-        
+
         printf("╔════════════════════════════════════════════════════╗\n");
-        printf("║         🔄 LIVE BACKGROUND SIMULATION 🔄           ║\n");
+        printf("║         LIVE BACKGROUND SIMULATION                 ║\n");
         printf("╚════════════════════════════════════════════════════╝\n\n");
-        
-        printf("📊 CPU SCHEDULING:\n");
-        printf("   • Operations Executed: %d\n", engine.cpu_operations_count);
-        printf("   • Algorithm: Round-Robin (RR)\n");
-        printf("   • Time Quantum: 4ms\n\n");
-        
-        printf("💾 MEMORY MANAGEMENT:\n");
-        printf("   • Allocations Performed: %d\n", engine.memory_allocations_count);
-        printf("   • Algorithm: Buddy System (First-Fit)\n");
-        printf("   • Total Memory: 1024 KB\n");
-        printf("   • Fragmentation: %.1f%%\n\n", (float)memory_get_fragmentation(engine.memory));
-        
-        printf("📄 PAGE REPLACEMENT:\n");
-        printf("   • Page Faults: %d\n", engine.page_faults_count);
-        printf("   • Algorithm: LRU (Least Recently Used)\n");
-        printf("   • Page Frames: 4\n");
-        printf("   • Page Size: 4096 bytes\n\n");
-        
-        printf("💿 DISK SCHEDULING:\n");
-        printf("   • I/O Operations: %d\n", engine.disk_operations_count);
-        printf("   • Algorithm: C-SCAN (Circular SCAN)\n");
-        printf("   • Disk Tracks: 200\n\n");
-        
-        printf("🔒 SYNCHRONIZATION:\n");
-        printf("   • Active Mutexes: 4 (users, banker, scheduler, memory)\n");
-        printf("   • Synchronization Model: POSIX Threads\n");
-        printf("   • Deadlock Prevention: Banker's Algorithm\n\n");
-        
+
+        printf("CPU SCHEDULING:\n");
+        printf("   - Operations Executed: %d\n", engine.cpu_operations_count);
+        printf("   - Algorithm: Round-Robin (RR)\n");
+        printf("   - Time Quantum: 4ms\n\n");
+
+        printf("MEMORY MANAGEMENT:\n");
+        printf("   - Allocations Performed: %d\n", engine.memory_allocations_count);
+        printf("   - Algorithm: Buddy System (First-Fit)\n");
+        printf("   - Total Memory: 1024 KB\n");
+        printf("   - Fragmentation: %.1f%%\n\n", (float)memory_get_fragmentation(engine.memory));
+
+        printf("PAGE REPLACEMENT:\n");
+        printf("   - Page Faults: %d\n", engine.page_faults_count);
+        printf("   - Algorithm: LRU (Least Recently Used)\n");
+        printf("   - Page Frames: 4\n");
+        printf("   - Page Size: 4096 bytes\n\n");
+
+        printf("DISK SCHEDULING:\n");
+        printf("   - I/O Operations: %d\n", engine.disk_operations_count);
+        printf("   - Algorithm: C-SCAN (Circular SCAN)\n");
+        printf("   - Disk Tracks: 200\n\n");
+
+        printf("SYNCHRONIZATION:\n");
+        printf("   - Active Mutexes: 4 (users, banker, scheduler, memory)\n");
+        printf("   - Synchronization Model: POSIX Threads\n");
+        printf("   - Deadlock Prevention: Banker's Algorithm\n\n");
+
         printf("═══════════════════════════════════════════════════════\n");
-        printf("⚡ Update #%d (Next update in 2 seconds... Press 'q' to exit)\n", ++update_count);
+        printf("Update #%d (Next update in 2 seconds... Press 'q' to exit)\n", ++update_count);
         printf("═══════════════════════════════════════════════════════\n");
         fflush(stdout);
-        
-        // Wait 2 seconds while checking for quit command
+
+        // Wait up to ~2 seconds but check input frequently
         for (int i = 0; i < 20; i++) {
-            usleep(100000);  // 100ms per iteration, 20 iterations = 2 seconds
-            
-            int ch;
-            while ((ch = getchar()) != EOF) {
-                if (ch == 'q' || ch == 'Q') {
-                    monitoring = 0;
-                    break;
+            usleep(100000);
+
+            int poll_count = poll(&pfd, 1, 0);
+            if (poll_count > 0 && (pfd.revents & POLLIN)) {
+                char buf[16];
+                ssize_t r = read(STDIN_FILENO, buf, sizeof(buf));
+                if (r > 0) {
+                    for (ssize_t k = 0; k < r; k++) {
+                        if (buf[k] == 'q' || buf[k] == 'Q') {
+                            monitoring = 0;
+                            break;
+                        }
+                    }
                 }
             }
-            
+
             if (!monitoring) break;
         }
     }
-    
-    // Restore terminal settings
+
+    // Restore terminal settings and clear input buffer
     tcsetattr(STDIN_FILENO, TCSANOW, &old_settings);
+    tcflush(STDIN_FILENO, TCIFLUSH);
+    fflush(stdout);
 }
 
 /* ============================================
@@ -758,8 +772,11 @@ void game_loop(void) {
                 
             case 6:
                 printf("Logging out...\n");
+                fflush(stdout);
+                tcflush(STDIN_FILENO, TCIFLUSH);  // Clear input buffer before logout
                 login_system_logout(engine.session);
                 return;
+
                 
             default:
                 printf("❌ Invalid option.\n");
@@ -810,31 +827,17 @@ int main(void) {
     engine.paging = page_system_init(4, PAGE_LRU);  // 4 frames, LRU
     engine.disk_sched = disk_scheduler_init(200, DISK_CSCAN);  // 200 tracks, C-SCAN
     
-    // Display boot sequence
-    display_header(NULL);
-    printf("Initializing SYS_RESCUE...\n");
-    sleep(1);
-    printf("✓ Question pool loaded\n");
-    sleep(1);
-    printf("✓ Algorithms initialized\n");
-    sleep(1);
-    printf("✓ Ready to start\n\n");
-    press_any_key();
-    
-    // Login flow
-    if (!login_flow()) {
-        printf("Exiting SYS_RESCUE.\n");
-        return 0;
+    // Start interactive engine: show login screen and run sessions until user exits
+    while (login_flow()) {
+        // Start background simulation for the authenticated session
+        start_background_simulation();
+
+        // Main game loop
+        game_loop();
+
+        // Stop background simulation after logout or exit from game loop
+        stop_background_simulation();
     }
-    
-    // Start background simulation
-    start_background_simulation();
-    
-    // Main game loop
-    game_loop();
-    
-    // Stop background simulation
-    stop_background_simulation();
     
     // Cleanup
     login_system_destroy(engine.session);
@@ -852,7 +855,7 @@ int main(void) {
     disk_scheduler_destroy(engine.disk_sched);
     pthread_mutex_destroy(&engine.timer_lock);
     
-    printf("Thanks for playing SYS_RESCUE!\n");
+    printf("Thanks for playing Interactive OS Algorithm Simulator!\n");
     
     return 0;
 }

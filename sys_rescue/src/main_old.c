@@ -14,7 +14,7 @@
 #include "login_system.h"
 #include "algorithms.h"
 
-#define GAME_TITLE "SYS_RESCUE: Interactive OS Algorithm Simulator"
+#define GAME_TITLE "Interactive OS Algorithm Simulator"
 #define GAME_VERSION "1.0.0"
 
 /* ============================================

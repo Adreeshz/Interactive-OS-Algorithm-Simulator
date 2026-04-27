@@ -6,10 +6,17 @@
 #include <time.h>
 #include <signal.h>
 #include <stdint.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include "simulator.h"
 #include "user_management.h"
 #include "question_pool.h"
 #include "algorithms.h"
+
+/* Global process tracking for system calls demonstration */
+static int simulator_main_pid = 0;
+static int simulator_child_pids[MAX_SIMULATED_USERS];
+static int simulator_child_count = 0;
 
 /* ============================================
    INITIALIZATION & CLEANUP
@@ -21,6 +28,17 @@ SimulationEnvironment* simulator_init(int num_users) {
     
     memset(sim, 0, sizeof(SimulationEnvironment));
     sim->user_count = num_users > MAX_SIMULATED_USERS ? MAX_SIMULATED_USERS : num_users;
+    
+    /* Capture main simulator process ID using getpid() */
+    simulator_main_pid = getpid();
+    memset(simulator_child_pids, 0, sizeof(simulator_child_pids));
+    simulator_child_count = 0;
+    
+    /* SYSTEM CALL: getpid() - Get the current process ID */
+    simulator_main_pid = getpid();
+    printf("[SYSTEM CALL] Simulator main process PID: %d\n", simulator_main_pid);
+    memset(simulator_child_pids, 0, sizeof(simulator_child_pids));
+    simulator_child_count = 0;
     
     // Initialize mutexes and condition variables
     pthread_mutex_init(&sim->users_lock, NULL);
@@ -85,7 +103,23 @@ int simulator_create_users(SimulationEnvironment* sim, int count) {
         strncpy(user->username, names[i], sizeof(user->username) - 1);
         user->thread_id = 0;
         user->state = THREAD_STATE_IDLE;
-        user->pid = 1000 + i;
+        
+        /* SYSTEM CALL: fork() - Create child process for each simulated user */
+        pid_t child_pid = fork();
+        if (child_pid == -1) {
+            /* Fork failed */
+            user->pid = -1;
+            printf("  ⚠ Fork failed for user %s\n", names[i]);
+        } else if (child_pid == 0) {
+            /* Child process - exit immediately (we're in parent for threading) */
+            exit(0);
+        } else {
+            /* Parent process - store child PID */
+            user->pid = child_pid;
+            if (simulator_child_count < MAX_SIMULATED_USERS) {
+                simulator_child_pids[simulator_child_count++] = child_pid;
+            }
+        }
         user->priority = rand() % 5;  // Priority 0-4
         user->cpu_burst_remaining = 100 + (rand() % 400);  // 100-500ms
         user->memory_required = (rand() % 5 + 1) * MEMORY_PAGE_SIZE;  // 4KB-20KB

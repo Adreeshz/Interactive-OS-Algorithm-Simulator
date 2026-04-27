@@ -13,7 +13,7 @@
 #include "login_system.h"
 #include "algorithms.h"
 
-#define GAME_TITLE "SYS_RESCUE: Interactive OS Algorithm Simulator"
+#define GAME_TITLE "Interactive OS Algorithm Simulator"
 #define GAME_VERSION "2.0.0"
 #define LEVEL_TIME_LIMIT 1800  // 30 minutes per level
 
@@ -454,7 +454,7 @@ void display_help(void) {
     
     printf("GAME OVERVIEW:\n");
     printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
-    printf("SYS_RESCUE is an interactive OS algorithm simulator.\n");
+    printf("Interactive OS Algorithm Simulator is an interactive OS algorithm simulator.\n");
     printf("Learn and master operating system concepts through\n");
     printf("practical questions with adaptive difficulty.\n\n");
     
@@ -599,7 +599,7 @@ int main(void) {
     
     // Display boot sequence
     display_header(NULL);
-    printf("Initializing SYS_RESCUE...\n");
+    printf("Initializing Interactive OS Algorithm Simulator...\n");
     sleep(1);
     printf("✓ Question pool loaded\n");
     sleep(1);
@@ -610,7 +610,7 @@ int main(void) {
     
     // Login flow
     if (!login_flow()) {
-        printf("Exiting SYS_RESCUE.\n");
+        printf("Exiting Interactive OS Algorithm Simulator.\n");
         return 0;
     }
     
@@ -627,7 +627,7 @@ int main(void) {
     disk_scheduler_destroy(engine.disk_sched);
     pthread_mutex_destroy(&engine.timer_lock);
     
-    printf("Thanks for playing SYS_RESCUE!\n");
+    printf("Thanks for playing Interactive OS Algorithm Simulator!\n");
     
     return 0;
 }

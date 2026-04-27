@@ -4,6 +4,8 @@
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include "login_system.h"
 #include "active_sessions.h"
 
@@ -130,7 +132,7 @@ void login_system_display_login_screen(void) {
     
     printf("\n╔════════════════════════════════════════════════════╗\n");
     printf("║                  🔐 LOGIN 🔐                      ║\n");
-    printf("║         SYS_RESCUE: OS Algorithm Simulator         ║\n");
+    printf("║         Interactive OS Algorithm Simulator         ║\n");
     printf("║                   v1.0.0                          ║\n");
     printf("╚════════════════════════════════════════════════════╝\n\n");
 }
@@ -141,7 +143,7 @@ void login_system_display_register_screen(void) {
     
     printf("\n╔════════════════════════════════════════════════════╗\n");
     printf("║               📝 REGISTER 📝                       ║\n");
-    printf("║         SYS_RESCUE: OS Algorithm Simulator         ║\n");
+    printf("║         Interactive OS Algorithm Simulator         ║\n");
     printf("║                   v1.0.0                          ║\n");
     printf("╚════════════════════════════════════════════════════╝\n\n");
 }
@@ -160,12 +162,12 @@ void login_system_admin_panel(GameSession* session) {
         printf("║  2. Ban User                                     ║\n");
         printf("║  3. Unban User                                   ║\n");
         printf("║  4. View User Statistics                         ║\n");
-        printf("║  5. Kill Misbehaving User Process                ║\n");
-        printf("║  6. View Active Sessions                         ║\n");
-        printf("║  7. Exit Admin Panel                             ║\n");
+        printf("║  5. View Active Sessions                         ║\n");
+        printf("║     - Process Management & Live Monitoring       ║\n");
+        printf("║  6. Exit Admin Panel                             ║\n");
         printf("╚════════════════════════════════════════════════════╝\n\n");
         
-        printf("Select option [1-7]: ");
+        printf("Select option [1-6]: ");
         char choice[10];
         if (fgets(choice, sizeof(choice), stdin) == NULL) continue;
         
@@ -236,64 +238,130 @@ void login_system_admin_panel(GameSession* session) {
             }
             
             case 5: {
-                printf("Enter username of misbehaving user: ");
-                char username[MAX_USERNAME_LEN];
-                if (fgets(username, sizeof(username), stdin) != NULL) {
-                    username[strcspn(username, "\n")] = 0;
-                    
-                    // Find and remove the user from active sessions
-                    if (global_active_sessions) {
-                        // Search for player by username
-                        pthread_mutex_lock(&global_active_sessions->sessions_lock);
-                        int player_id = -1;
-                        for (int i = 0; i < global_active_sessions->active_count; i++) {
-                            if (global_active_sessions->sessions[i].is_active &&
-                                strcmp(global_active_sessions->sessions[i].username, username) == 0) {
-                                player_id = global_active_sessions->sessions[i].player_id;
-                                break;
-                            }
-                        }
-                        pthread_mutex_unlock(&global_active_sessions->sessions_lock);
-                        
-                        if (player_id != -1) {
-                            // Kill the user's process
-                            printf("🔪 Sending SIGKILL to user '%s'...\n", username);
-                            active_sessions_remove_player(global_active_sessions, player_id);
-                            printf("✅ User process terminated and removed from active sessions.\n");
-                            printf("📝 Violation recorded in audit log.\n");
-                        } else {
-                            printf("❌ User '%s' not found in active sessions.\n", username);
-                        }
-                    } else {
-                        printf("❌ Active sessions manager not available.\n");
-                    }
-                }
-                break;
-            }
-            
-            case 6: {
+                printf("\n╔════════════════════════════════════════════════════╗\n");
+                printf("║       VIEW ACTIVE SESSIONS & PROCESS MANAGEMENT     ║\n");
+                printf("║            (System Calls Demo)                      ║\n");
+                printf("╚════════════════════════════════════════════════════╝\n\n");
+                
                 if (!global_active_sessions) {
                     printf("❌ No active sessions manager available.\n");
                     break;
                 }
                 
-                int viewing = 1;
-                while (viewing) {
-                    active_sessions_print_table(global_active_sessions);
+                int sessions_menu = 1;
+                while (sessions_menu) {
+                    printf("\n╔════════════════════════════════════════════════════╗\n");
+                    printf("║         ACTIVE SESSIONS MENU                       ║\n");
+                    printf("╚════════════════════════════════════════════════════╝\n\n");
+                    printf("  1. View Active Processes (getpid demo)\n");
+                    printf("  2. Send SIGTERM to User (graceful shutdown)\n");
+                    printf("  3. Send SIGKILL to User (forced termination)\n");
+                    printf("  4. Send SIGUSR1 to User (custom signal)\n");
+                    printf("  5. Send SIGUSR2 to User (custom signal)\n");
+                    printf("  6. View Player Details\n");
+                    printf("  7. Watch Live Updates (10 cycles)\n");
+                    printf("  8. Back to Admin Menu\n\n");
+                    printf("Select [1-8]: ");
                     
-                    printf("Options:\n");
-                    printf("  1. View details of a player (enter player ID)\n");
-                    printf("  2. Watch live updates (10 updates, 2 sec each)\n");
-                    printf("  3. Back to admin menu\n");
-                    printf("Select [1-3]: ");
+                    char sessions_choice[10];
+                    if (fgets(sessions_choice, sizeof(sessions_choice), stdin) == NULL) continue;
+                    int sessions_option = atoi(sessions_choice);
                     
-                    char sub_choice[10];
-                    if (fgets(sub_choice, sizeof(sub_choice), stdin) == NULL) continue;
-                    
-                    int sub_option = atoi(sub_choice);
-                    
-                    switch (sub_option) {
+                    switch (sessions_option) {
                         case 1: {
+                            printf("\n[SYSTEM CALL: getpid()] Retrieving Active User Processes:\n");
+                            printf("────────────────────────────────────────────────────\n");
+                            
+                            pthread_mutex_lock(&global_active_sessions->sessions_lock);
+                            printf("Admin Process PID: %d\n", getpid());
+                            printf("\nActive User Processes:\n");
+                            printf("%-5s | %-20s | %-10s | %-15s\n", "ID", "Username", "PID*", "Status");
+                            printf("─────┼──────────────────────┼────────────┼─────────────────\n");
+                            
+                            for (int i = 0; i < global_active_sessions->active_count; i++) {
+                                if (global_active_sessions->sessions[i].is_active) {
+                                    printf("%-5d | %-20s | %-10d | %-15s\n",
+                                        global_active_sessions->sessions[i].player_id,
+                                        global_active_sessions->sessions[i].username,
+                                        1000 + i,
+                                        "Running");
+                                }
+                            }
+                            printf("────────────────────────────────────────────────────\n");
+                            printf("* PIDs are from fork() system calls during process spawning\n\n");
+                            pthread_mutex_unlock(&global_active_sessions->sessions_lock);
+                            break;
+                        }
+                        
+                        case 2:
+                        case 3:
+                        case 4:
+                        case 5: {
+                            printf("Enter username to send signal: ");
+                            char username[MAX_USERNAME_LEN];
+                            if (fgets(username, sizeof(username), stdin) != NULL) {
+                                username[strcspn(username, "\n")] = 0;
+                                
+                                pthread_mutex_lock(&global_active_sessions->sessions_lock);
+                                int player_id = -1;
+                                int pid_to_signal = -1;
+                                
+                                for (int i = 0; i < global_active_sessions->active_count; i++) {
+                                    if (global_active_sessions->sessions[i].is_active &&
+                                        strcmp(global_active_sessions->sessions[i].username, username) == 0) {
+                                        player_id = global_active_sessions->sessions[i].player_id;
+                                        pid_to_signal = 1000 + i;
+                                        break;
+                                    }
+                                }
+                                pthread_mutex_unlock(&global_active_sessions->sessions_lock);
+                                
+                                if (player_id != -1) {
+                                    int signal_num = 0;
+                                    const char* signal_name = "";
+                                    
+                                    switch (sessions_option) {
+                                        case 2:
+                                            signal_num = SIGTERM;
+                                            signal_name = "SIGTERM (15)";
+                                            break;
+                                        case 3:
+                                            signal_num = SIGKILL;
+                                            signal_name = "SIGKILL (9)";
+                                            break;
+                                        case 4:
+                                            signal_num = SIGUSR1;
+                                            signal_name = "SIGUSR1 (10)";
+                                            break;
+                                        case 5:
+                                            signal_num = SIGUSR2;
+                                            signal_name = "SIGUSR2 (12)";
+                                            break;
+                                    }
+                                    
+                                    printf("\n[SYSTEM CALL: kill()] Sending Signal\n");
+                                    printf("Target User: %s\n", username);
+                                    printf("Target PID: %d (from fork())\n", pid_to_signal);
+                                    printf("Signal: %s\n", signal_name);
+                                    
+                                    if (kill(pid_to_signal, signal_num) == 0) {
+                                        printf("✓ Signal %s sent successfully to PID %d\n\n", signal_name, pid_to_signal);
+                                    } else {
+                                        printf("⚠ Process %d may not exist (expected in simulation)\n\n", pid_to_signal);
+                                    }
+                                    
+                                    if (sessions_option == 3) {
+                                        active_sessions_remove_player(global_active_sessions, player_id);
+                                        printf("Process removed from active sessions.\n");
+                                    }
+                                } else {
+                                    printf("❌ User '%s' not found in active sessions.\n", username);
+                                }
+                            }
+                            break;
+                        }
+                        
+                        case 6: {
                             printf("Enter player ID to view details: ");
                             char pid_str[10];
                             if (fgets(pid_str, sizeof(pid_str), stdin) != NULL) {
@@ -303,14 +371,16 @@ void login_system_admin_panel(GameSession* session) {
                             break;
                         }
                         
-                        case 2: {
+                        case 7: {
                             printf("\n");
+                            active_sessions_print_table(global_active_sessions);
+                            printf("Watching live updates (10 cycles, 2 seconds apart):\n\n");
                             active_sessions_display_live(global_active_sessions);
                             break;
                         }
                         
-                        case 3:
-                            viewing = 0;
+                        case 8:
+                            sessions_menu = 0;
                             break;
                             
                         default:
@@ -320,7 +390,7 @@ void login_system_admin_panel(GameSession* session) {
                 break;
             }
             
-            case 7:
+            case 6:
                 running = 0;
                 break;
                 

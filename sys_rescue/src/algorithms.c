@@ -201,8 +201,19 @@ int banker_kill_process(BankersAlgorithm* banker, int pid) {
     }
     banker->process_count--;
     
-    // Kill the actual process with SIGKILL
-    kill(pid, SIGKILL);
+    /* SYSTEM CALL DEMONSTRATION: kill() with multiple signals */
+    printf("\n[SYSTEM CALL] Terminating process %d:\n", pid);
+    
+    /* First attempt: SIGTERM (graceful termination - allows cleanup) */
+    if (kill(pid, SIGTERM) == 0) {
+        printf("  ✓ Sent SIGTERM (signal 15) to PID %d - graceful termination\n", pid);
+        usleep(100000);  /* Give process time to handle signal */
+    }
+    
+    /* If still alive, send SIGKILL (forced termination - cannot be caught) */
+    if (kill(pid, SIGKILL) == 0) {
+        printf("  ✓ Sent SIGKILL (signal 9) to PID %d - forced termination\n", pid);
+    }
     
     pthread_mutex_unlock(&banker->banker_lock);
     return 0;

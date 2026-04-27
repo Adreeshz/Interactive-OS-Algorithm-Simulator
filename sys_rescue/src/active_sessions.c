@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
+#include <poll.h>
 #include "active_sessions.h"
 
 /* ============================================
@@ -163,25 +164,25 @@ void active_sessions_record_violation(ActiveSessionsManager* manager, int player
 const char* session_state_to_string(SessionState state) {
     switch (state) {
         case PLAYING_LEVEL_0:
-            return "🎮 Level 0: File System Recovery";
+            return "Level 0: File System";
         case PLAYING_LEVEL_1:
-            return "🎮 Level 1: Thread Restoration";
+            return "Level 1: Thread";
         case PLAYING_LEVEL_2:
-            return "🎮 Level 2: Synchronization";
+            return "Level 2: Synchronization";
         case PLAYING_LEVEL_3:
-            return "🎮 Level 3: Memory Management";
+            return "Level 3: Memory";
         case PLAYING_LEVEL_4:
-            return "🎮 Level 4: Page Replacement";
+            return "Level 4: Page Replacement";
         case PLAYING_LEVEL_5:
-            return "🎮 Level 5: Disk Scheduling";
+            return "Level 5: Disk Scheduling";
         case IN_ADMIN_PANEL:
-            return "👨‍💼 Admin Panel";
+            return "Admin Panel";
         case IDLE:
-            return "⏸️  Idle (In Menu)";
+            return "Idle (Menu)";
         case DISCONNECTED:
-            return "❌ Disconnected";
+            return "Disconnected";
         default:
-            return "❓ Unknown";
+            return "Unknown";
     }
 }
 
@@ -201,9 +202,9 @@ void active_sessions_print_table(ActiveSessionsManager* manager) {
     }
     
     // Header
-    printf("┌────┬──────────────────┬────────────────────────────────┬───────┬────────┬────────────┐\n");
-    printf("│ ID │ Username         │ Current Activity               │ Score │ Q/C    │ Violations │\n");
-    printf("├────┼──────────────────┼────────────────────────────────┼───────┼────────┼────────────┤\n");
+    printf("┌────┬──────────────────┬────────────────────────────────┬───────┬────────┬──────────┐\n");
+    printf("│ ID │ Username         │ Current Activity               │ Score │ Q/C    │ Viol.    │\n");
+    printf("├────┼──────────────────┼────────────────────────────────┼───────┼────────┼──────────┤\n");
     
     // Rows
     for (int i = 0; i < manager->active_count; i++) {
@@ -213,7 +214,7 @@ void active_sessions_print_table(ActiveSessionsManager* manager) {
             int questions = session->questions_answered;
             int correct = session->correct_answers;
             
-            printf("│ %2d │ %-16s │ %-30s │ %5d │ %2d/%-2d │ %10d     │\n",
+            printf("│ %2d │ %-16s │ %-30s │ %5d │ %2d/%-2d │ %-8d │\n",
                    session->player_id,
                    session->username,
                    session_state_to_string(session->state),
@@ -223,7 +224,7 @@ void active_sessions_print_table(ActiveSessionsManager* manager) {
         }
     }
     
-    printf("└────┴──────────────────┴────────────────────────────────┴───────┴────────┴────────────┘\n\n");
+    printf("└────┴──────────────────┴────────────────────────────────┴───────┴────────┴──────────┘\n\n");
     
     // Summary statistics
     int total_players = 0;
@@ -389,19 +390,39 @@ void active_sessions_stop_simulation(ActiveSessionsManager* manager) {
 void active_sessions_display_live(ActiveSessionsManager* manager) {
     if (!manager) return;
     
-    printf("\n🔴 LIVE SESSION MONITORING (updating every 2 seconds)...\n");
-    printf("Press Ctrl+C to stop monitoring.\n\n");
-    
+    printf("\nLIVE SESSION MONITORING (press 'q' to quit, updating every 2 seconds)...\n\n");
+
+    struct pollfd pfd;
+    pfd.fd = STDIN_FILENO;
+    pfd.events = POLLIN;
+
     int display_count = 0;
-    while (display_count < 10) {  // Show 10 updates
+    int keep_running = 1;
+    while (display_count < 100 && keep_running) {  // large upper bound, until user quits
         active_sessions_print_table(manager);
-        sleep(2);
-        display_count++;
-        
-        if (display_count < 10) {
-            printf("\n⏳ Updating in 2 seconds...\n");
+
+        // check for 'q' while waiting ~2 seconds
+        for (int i = 0; i < 20; i++) {
+            usleep(100000);
+            int poll_count = poll(&pfd, 1, 0);
+            if (poll_count > 0 && (pfd.revents & POLLIN)) {
+                char buf[8];
+                ssize_t r = read(STDIN_FILENO, buf, sizeof(buf));
+                if (r > 0) {
+                    for (ssize_t k = 0; k < r; k++) {
+                        if (buf[k] == 'q' || buf[k] == 'Q') {
+                            keep_running = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!keep_running) break;
         }
+
+        display_count++;
+        if (keep_running) printf("\nUpdating... (press 'q' to quit)\n");
     }
-    
-    printf("✅ Monitoring complete.\n");
+
+    printf("\nMonitoring stopped.\n");
 }
